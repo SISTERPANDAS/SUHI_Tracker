@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUHI Tracker | Spatial Analytics - India</title>
+
+    <!-- html2canvas dependency for map and card snapshots -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- 1. Leaflet Core CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- 2. Leaflet Draw CSS & JS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <!-- 3. Chart.js & html2pdf -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <!-- 4. Custom Dashboard CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard/dashboard.css') }}">
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col h-screen overflow-hidden font-sans">
+
+    <!-- ANALYSIS IN PROGRESS MODAL OVERLAY -->
+    <div id="loading-overlay" class="fixed inset-0 w-screen h-screen bg-slate-950/80 backdrop-blur-md z-[99999] hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700/80 p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center space-y-4 relative animate-in fade-in zoom-in duration-200">
+            <div class="relative w-16 h-16 mx-auto flex items-center justify-center">
+                <div class="absolute inset-0 rounded-full border-4 border-teal-500/20 animate-ping"></div>
+                <div class="w-14 h-14 rounded-full border-4 border-t-teal-400 border-r-teal-500 border-b-transparent border-l-transparent animate-spin"></div>
+                <i data-lucide="satellite" class="w-6 h-6 text-teal-300 absolute"></i>
+            </div>
+            <div>
+                <div class="flex items-center justify-between px-1 mb-1">
+                    <span class="text-xs font-bold text-slate-200 tracking-wide">Multi-Sensor Analysis in Progress</span>
+                    <span id="loading-progress-percent" class="text-xs font-bold text-teal-400">0%</span>
+                </div>
+                <p class="text-xs text-slate-400 text-left h-8 line-clamp-2" id="loading-status-text">Harmonizing USGS Landsat archives...</p>
+            </div>
+            <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800 relative">
+                <div id="loading-progress-bar" class="bg-gradient-to-r from-teal-500 via-cyan-400 to-teal-300 h-full w-0 transition-all duration-300 ease-out rounded-full"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Bar -->
+    <header class="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0 z-[1100] relative">
+        <div class="flex items-center gap-4">
+            <button id="sidebar-toggle-btn" onclick="toggleSidebar(event)" class="p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition focus:outline-none" title="Toggle Controls">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                <i data-lucide="flame" class="w-6 h-6 text-teal-400"></i>
+                <span class="text-lg font-bold text-teal-300">SUHI Tracker</span>
+                <span class="text-xs text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full ml-2">India National Platform</span>
+            </div>
+        </div>
+
+        <!-- Global City Live Search Bar -->
+        <div class="relative w-80 hidden md:block">
+            <div class="relative flex items-center">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none"></i>
+                <input 
+                    type="text" 
+                    id="city-search-input" 
+                    placeholder="Search any Indian city or region..." 
+                    autocomplete="off"
+                    class="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-9 pr-8 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition"
+                />
+                <button id="clear-search-btn" onclick="clearCitySearch()" class="absolute right-2.5 text-slate-500 hover:text-slate-300 hidden">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+            <!-- Live Autocomplete Suggestions Box -->
+            <div id="search-suggestions" class="absolute left-0 right-0 top-full mt-1.5 bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto hidden z-[9999]"></div>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <button class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"><i data-lucide="help-circle" class="w-5 h-5"></i></button>
+            <div class="flex items-center gap-2 pl-3 border-l border-slate-800">
+                <div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center font-bold text-sm text-white">
+                    {{ user.name[0] if user else 'A' }}
+                </div>
+                <span class="text-sm font-medium text-slate-300" id="profile-name">{{ user.name if user else 'Analyst' }}</span>
+                <button onclick="logout()" class="ml-2 text-xs text-red-400 hover:underline">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <div class="flex flex-1 overflow-hidden relative">
+
+        <div id="sidebar-backdrop" onclick="closeSidebar()" class="fixed inset-0 top-16 bg-slate-950/60 backdrop-blur-sm z-[1200] transition-opacity duration-300 opacity-0 pointer-events-none"></div>
+
+        <!-- Left Drawer Sidebar -->
+        <aside id="main-sidebar" class="sidebar-drawer absolute top-0 bottom-0 left-0 w-80 bg-slate-900/95 backdrop-blur-xl border-r border-slate-800 p-5 flex flex-col justify-between overflow-y-auto z-[1300] shadow-2xl transition-transform duration-300 ease-in-out -translate-x-full">
+            <div class="space-y-6">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span class="text-xs font-bold tracking-wider uppercase text-teal-400">Analysis Controls</span>
+                    <button onclick="closeSidebar()" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Method Selection -->
+                <div>
+                    <label class="sidebar-label">1. Select ROI Method</label>
+                    <div class="grid grid-cols-3 gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs font-medium">
+                        <button onclick="setRoiMode('region')" id="btn-mode-region" class="roi-tab active-roi-tab">City</button>
+                        <button onclick="setRoiMode('coordinates')" id="btn-mode-coordinates" class="roi-tab">Coords</button>
+                        <button onclick="setRoiMode('draw')" id="btn-mode-draw" class="roi-tab">Draw</button>
+                    </div>
+                </div>
+
+                <!-- ROI Options (Major Indian Cities Dropdown) -->
+                <div id="panel-region" class="roi-panel">
+                    <label class="sidebar-sublabel">Select Major Indian City</label>
+                    <div class="relative">
+                        <i data-lucide="map-pin" class="select-icon"></i>
+                        <select id="select-region" 
+                                class="w-full bg-slate-950 border border-slate-700/80 text-slate-200 text-xs rounded-xl py-2.5 pl-9 pr-8 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 cursor-pointer shadow-sm">
+                            <!-- Neutral unselected placeholder -->
+                            <option value="" disabled selected>-- Select a City / Region --</option>
+                            <option value="Agra">Agra</option>
+                            <option value="Ahmedabad">Ahmedabad</option>
+                            <option value="Allahabad (Prayagraj)">Allahabad (Prayagraj)</option>
+                            <option value="Amritsar">Amritsar</option>
+                            <option value="Aurangabad">Aurangabad</option>
+                            <option value="Bareilly">Bareilly</option>
+                            <option value="Bengaluru">Bengaluru</option>
+                            <option value="Bhopal">Bhopal</option>
+                            <option value="Bhubaneswar">Bhubaneswar</option>
+                            <option value="Chandigarh">Chandigarh</option>
+                            <option value="Chennai">Chennai</option>
+                            <option value="Coimbatore">Coimbatore</option>
+                            <option value="Dehradun">Dehradun</option>
+                            <option value="Delhi NCR">Delhi NCR</option>
+                            <option value="Dhanbad">Dhanbad</option>
+                            <option value="Faridabad">Faridabad</option>
+                            <option value="Ghaziabad">Ghaziabad</option>
+                            <option value="Guwahati">Guwahati</option>
+                            <option value="Gwalior">Gwalior</option>
+                            <option value="Hubli-Dharwad">Hubli-Dharwad</option>
+                            <option value="Hyderabad">Hyderabad</option>
+                            <option value="Indore">Indore</option>
+                            <option value="Jabalpur">Jabalpur</option>
+                            <option value="Jaipur">Jaipur</option>
+                            <option value="Jodhpur">Jodhpur</option>
+                            <option value="Kanpur">Kanpur</option>
+                            <option value="Kochi">Kochi</option>
+                            <option value="Kolkata">Kolkata</option>
+                            <option value="Kota">Kota</option>
+                            <option value="Lucknow">Lucknow</option>
+                            <option value="Ludhiana">Ludhiana</option>
+                            <option value="Madurai">Madurai</option>
+                            <option value="Meerut">Meerut</option>
+                            <option value="Mumbai">Mumbai</option>
+                            <option value="Mysuru (Mysore)">Mysuru (Mysore)</option>
+                            <option value="Nagpur">Nagpur</option>
+                            <option value="Nashik">Nashik</option>
+                            <option value="Patna">Patna</option>
+                            <option value="Pune">Pune</option>
+                            <option value="Raipur">Raipur</option>
+                            <option value="Rajkot">Rajkot</option>
+                            <option value="Ranchi">Ranchi</option>
+                            <option value="Solapur">Solapur</option>
+                            <option value="Srinagar">Srinagar</option>
+                            <option value="Surat">Surat</option>
+                            <option value="Thane">Thane</option>
+                            <option value="Tiruchirappalli">Tiruchirappalli</option>
+                            <option value="Vadodara">Vadodara</option>
+                            <option value="Varanasi">Varanasi</option>
+                            <option value="Vijayawada">Vijayawada</option>
+                            <option value="Visakhapatnam">Visakhapatnam</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="panel-coordinates" class="roi-panel hidden space-y-3">
+                    <label class="sidebar-sublabel">Point Coordinates (Center Zone)</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <span class="text-[11px] text-slate-400">Longitude (X)</span>
+                            <input type="number" step="0.0001" id="coord-x" value="00.0000" class="sidebar-input">
+                        </div>
+                        <div>
+                            <span class="text-[11px] text-slate-400">Latitude (Y)</span>
+                            <input type="number" step="0.0001" id="coord-y" value="00.0000" class="sidebar-input">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="panel-draw" class="roi-panel hidden">
+                    <div class="p-3 bg-teal-950/40 border border-teal-500/30 rounded-xl text-xs text-teal-300">
+                        <i data-lucide="edit-3" class="inline w-4 h-4 mr-1"></i>
+                        Use the <b>Draw Toolbar</b> on the selector map to outline any study area across India.
+                    </div>
+                </div>
+
+                <!-- Timeline Selection -->
+                <div>
+                    <label class="sidebar-label">2. Select Analysis Period (Yearly)</label>
+                    <div class="space-y-2">
+                        <select id="start-year" class="sidebar-select">
+                            <option value="" disabled selected>-- Start Year --</option>
+                            <option value="2000">2000 (Landsat 5 / 7)</option>
+                            <option value="2001">2001 (Landsat 5 / 7)</option>
+                            <option value="2002">2002 (Landsat 5 / 7)</option>
+                            <option value="2003">2003 (Landsat 5 TM)</option>
+                            <option value="2004">2004 (Landsat 5 TM)</option>
+                            <option value="2005">2005 (Landsat 5 TM)</option>
+                            <option value="2006">2006 (Landsat 5 TM)</option>
+                            <option value="2007">2007 (Landsat 5 TM)</option>
+                            <option value="2008">2008 (Landsat 5 TM)</option>
+                            <option value="2009">2009 (Landsat 5 TM)</option>
+                            <option value="2010">2010 (Landsat 5 TM)</option>
+                            <option value="2011">2011 (Landsat 5 TM)</option>
+                            <option value="2012">2012 (Landsat 7 ETM+)</option>
+                            <option value="2013">2013 (Landsat 8 OLI)</option>
+                            <option value="2014">2014 (Landsat 8 OLI)</option>
+                            <option value="2015">2015 (Landsat 8 OLI)</option>
+                            <option value="2016">2016 (Landsat 8 OLI)</option>
+                            <option value="2017">2017 (Landsat 8 OLI)</option>
+                            <option value="2018">2018 (Landsat 8 OLI)</option>
+                            <option value="2019">2019 (Landsat 8 OLI)</option>
+                            <option value="2020">2020 (Landsat 8 OLI)</option>
+                            <option value="2021">2021 (Landsat 8 OLI)</option>
+                            <option value="2022">2022 (Landsat 9 / 8)</option>
+                            <option value="2023">2023 (Landsat 9 / 8)</option>
+                            <option value="2024">2024 (Landsat 9 / 8)</option>
+                            <option value="2025">2025 (Landsat 9 / 8)</option>
+                        </select>
+                        <div class="text-center text-xs font-semibold text-slate-400">to</div>
+                        <select id="end-year" class="sidebar-select">
+                            <option value="" disabled selected>-- End Year --</option>
+                            <option value="2000">2000 (Landsat 5 / 7)</option>
+                            <option value="2001">2001 (Landsat 5 / 7)</option>
+                            <option value="2002">2002 (Landsat 5 / 7)</option>
+                            <option value="2003">2003 (Landsat 5 TM)</option>
+                            <option value="2004">2004 (Landsat 5 TM)</option>
+                            <option value="2005">2005 (Landsat 5 TM)</option>
+                            <option value="2006">2006 (Landsat 5 TM)</option>
+                            <option value="2007">2007 (Landsat 5 TM)</option>
+                            <option value="2008">2008 (Landsat 5 TM)</option>
+                            <option value="2009">2009 (Landsat 5 TM)</option>
+                            <option value="2010">2010 (Landsat 5 TM)</option>
+                            <option value="2011">2011 (Landsat 5 TM)</option>
+                            <option value="2012">2012 (Landsat 7 ETM+)</option>
+                            <option value="2013">2013 (Landsat 8 OLI)</option>
+                            <option value="2014">2014 (Landsat 8 OLI)</option>
+                            <option value="2015">2015 (Landsat 8 OLI)</option>
+                            <option value="2016">2016 (Landsat 8 OLI)</option>
+                            <option value="2017">2017 (Landsat 8 OLI)</option>
+                            <option value="2018">2018 (Landsat 8 OLI)</option>
+                            <option value="2019">2019 (Landsat 8 OLI)</option>
+                            <option value="2020">2020 (Landsat 8 OLI)</option>
+                            <option value="2021">2021 (Landsat 8 OLI)</option>
+                            <option value="2022">2022 (Landsat 9 / 8)</option>
+                            <option value="2023">2023 (Landsat 9 / 8)</option>
+                            <option value="2024">2024 (Landsat 9 / 8)</option>
+                            <option value="2025">2025 (Landsat 9 / 8)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- AOI Warning Banner (Placed outside tab panels, using inline style for 100% reliability) -->
+                <div id="aoi-warning-banner" 
+                    style="display: none;" 
+                    class="my-3 p-3 bg-amber-500/15 border border-amber-500/50 rounded-xl items-start gap-2.5 text-amber-200">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+                    <div class="text-xs leading-relaxed">
+                        <span class="font-bold text-amber-300">Large Area of Interest (<span id="aoi-area-val">0</span> km²):</span>
+                        The selected region exceeds 10 × 10 km². Processing multi-decadal Landsat composites may take longer than usual.
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button onclick="executeFullAnalysis()" id="analyze-btn" class="w-full py-3.5 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl shadow-lg shadow-teal-900/50 flex items-center justify-center gap-2 transition">
+                    <i data-lucide="trending-up" class="w-5 h-5"></i>
+                    <span>Quantify SUHI & Growth</span>
+                </button>
+            </div>
+
+            <div class="pt-6 border-t border-slate-800 space-y-2 text-sm text-slate-400">
+                <a href="#" id="nav-dashboard" onclick="switchView('dashboard'); return false;" class="sidebar-nav-item active-nav">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+                </a>
+                <a href="#" id="nav-about" onclick="switchView('about'); return false;" class="sidebar-nav-item">
+                    <i data-lucide="info" class="w-4 h-4"></i> About Us
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Workspace Area -->
+        <main class="flex-1 p-5 overflow-y-auto space-y-5 w-full h-full relative" id="printable-report">
+
+            <!-- SECTION 1: ROI SELECTION MAP (INITIAL INDIA VIEW) -->
+            <div id="roi-definition-section" class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-teal-400 flex items-center gap-1.5">
+                        <i data-lucide="crosshair" class="w-4 h-4"></i> Step 1: Define Study Region (India Nationwide)
+                    </h2>
+                    <span class="text-xs text-slate-400">
+                        Select a city, search any location, or draw bounds, then click <b class="text-teal-300">Quantify SUHI & Growth</b>.
+                    </span>
+                </div>
+
+                <div class="map-card">
+                    <div class="map-card-header justify-between">
+                        <span class="font-bold text-sm tracking-wide text-slate-200">Interactive Study Area Selector</span>
+                        <span class="text-[11px] text-teal-400 font-semibold bg-teal-950 px-2.5 py-0.5 rounded border border-teal-800/60">India Domain</span>
+                    </div>
+                    <div id="map-roi-picker" class="h-[520px] relative w-full"></div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: MULTI-DECADAL RESULTS -->
+            <div id="analysis-results-section" class="hidden space-y-5">
+                <div class="flex items-center justify-between pb-1">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-teal-400 flex items-center gap-1.5">
+                        <i data-lucide="layers" class="w-4 h-4"></i> Multi-Decadal Maps
+                    </h2>
+                    <button onclick="resetToRoiPicker()" class="px-3 py-1 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 rounded-lg transition flex items-center gap-1.5">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Redefine ROI
+                    </button>
+                </div>
+
+                <!-- ROW 1: LULC CLASSIFICATION -->
+                <div>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5">
+                        <i data-lucide="building" class="w-3.5 h-3.5 text-teal-400"></i> Land Use / Land Cover Transition Maps
+                    </h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        <!-- Map 1: LULC Start -->
+                        <div class="map-card relative overflow-hidden flex flex-col" id="card-built-start">
+                            <div class="map-card-header justify-between">
+                                <span class="font-bold text-sm tracking-wide" id="lbl-built-1">LULC CLASSIFICATION – 2000</span>
+                                <div class="flex items-center gap-2">
+                                    <input type="range" min="0" max="1" step="0.05" value="0.85" oninput="updateMapOpacity('built-start', this.value)" class="w-20 accent-teal-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                                    <button type="button" onclick="downloadMapCard('map-built-start', 'LULC_Start_Map', mapBuiltStart)" class="px-2.5 py-1 bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 rounded-lg text-xs font-semibold flex items-center gap-1 transition" title="Download Map">
+                                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                        <span>Download</span>
+                                    </button>
+                                    <button type="button" onclick="toggleMapFullscreen('card-built-start', mapBuiltStart)" class="p-1 text-slate-400 hover:text-teal-300 hover:bg-slate-800 rounded transition" title="Toggle Fullscreen">
+                                        <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Floating Exit Button (Visible only in Fullscreen) -->
+                            <button type="button" onclick="exitMapFullscreen()" class="exit-fullscreen-btn hidden absolute top-14 right-4 z-[1000] px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl shadow-xl flex items-center gap-1.5 text-xs font-semibold backdrop-blur transition">
+                                <i data-lucide="minimize-2" class="w-3.5 h-3.5 text-teal-400"></i>
+                                <span>Exit (Esc)</span>
+                            </button>
+                            <div id="map-built-start" class="h-64 relative w-full"></div>
+                            <div class="map-legend">
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#1f78b4]"></span> Water</div>
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#33a02c]"></span> Vegetation</div>
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#e31a1c]"></span> Built-up</div>
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#d9a441]"></span> Barren</div>
+                            </div>
+                        </div>
+
+                        <!-- Map 2: LULC End -->
+                        <div class="map-card relative overflow-hidden flex flex-col" id="card-built-end">
+                            <div class="map-card-header justify-between">
+                                <span class="font-bold text-sm tracking-wide" id="lbl-built-2">LULC CLASSIFICATION – 2025</span>
+                                <div class="flex items-center gap-2">
+                                    <input type="range" min="0" max="1" step="0.05" value="0.85" oninput="updateMapOpacity('built-end', this.value)" class="w-20 accent-teal-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                                    <button type="button" onclick="downloadMapCard('map-built-end', 'LULC_End_Map', mapBuiltEnd)" class="px-2.5 py-1 bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 rounded-lg text-xs font-semibold flex items-center gap-1 transition" title="Download Map">
+                                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                        <span>Download</span>
+                                    </button>
+                                    <button type="button" onclick="toggleMapFullscreen('card-built-end', mapBuiltEnd)" class="p-1 text-slate-400 hover:text-teal-300 hover:bg-slate-800 rounded transition" title="Toggle Fullscreen">
+                                        <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Floating Exit Button (Visible only in Fullscreen) -->
+                            <button type="button" onclick="exitMapFullscreen()" class="exit-fullscreen-btn hidden absolute top-14 right-4 z-[1000] px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl shadow-xl flex items-center gap-1.5 text-xs font-semibold backdrop-blur transition">
+                                <i data-lucide="minimize-2" class="w-3.5 h-3.5 text-teal-400"></i>
+                                <span>Exit (Esc)</span>
+                            </button>
+                            <div id="map-built-end" class="h-64 relative w-full"></div>
+                            <div class="map-legend">
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#1f78b4]"></span> Water</div>
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#33a02c]"></span> Vegetation</div>
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#e31a1c]"></span> Built-up</div>
+                                <div class="flex items-center gap-1.5"><span class="legend-box bg-[#d9a441]"></span> Barren</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROW 2: THERMAL LST HEATMAPS -->
+                <div class="mt-5">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5">
+                        <i data-lucide="thermometer" class="w-3.5 h-3.5 text-amber-400"></i> Land Surface Temperature (LST) Maps
+                    </h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        <!-- Map 3: LST Start -->
+                        <div class="map-card relative overflow-hidden flex flex-col" id="card-lst-start">
+                            <div class="map-card-header justify-between">
+                                <span class="font-bold text-sm tracking-wide" id="lbl-lst-1">LST HEATMAP – 2000</span>
+                                <div class="flex items-center gap-2">
+                                    <input type="range" min="0" max="1" step="0.05" value="0.90" oninput="updateMapOpacity('lst-start', this.value)" class="w-20 accent-amber-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                                    <button type="button" onclick="downloadMapCard('map-lst-start', 'LST_Start_Map', mapLSTStart)" class="px-2.5 py-1 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center gap-1 transition" title="Download Map">
+                                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                        <span>Download</span>
+                                    </button>
+                                    <button type="button" onclick="toggleMapFullscreen('card-lst-start', mapLSTStart)" class="p-1 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded transition" title="Toggle Fullscreen">
+                                        <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Floating Exit Button (Visible only in Fullscreen) -->
+                            <button type="button" onclick="exitMapFullscreen()" class="exit-fullscreen-btn hidden absolute top-14 right-4 z-[1000] px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl shadow-xl flex items-center gap-1.5 text-xs font-semibold backdrop-blur transition">
+                                <i data-lucide="minimize-2" class="w-3.5 h-3.5 text-amber-400"></i>
+                                <span>Exit (Esc)</span>
+                            </button>
+                            <div id="map-lst-start" class="h-64 relative w-full"></div>
+                            <div class="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+                                <span class="text-[10px] font-semibold text-slate-300">18.0°C</span>
+                                <div class="flex-1 mx-3 h-2.5 rounded-full bg-gradient-to-r from-[#1f78b4] via-[#33a02c] via-[#ffff99] via-[#e31a1c] to-[#8b0000]"></div>
+                                <span class="text-[10px] font-semibold text-slate-300">34.0°C</span>
+                            </div>
+                        </div>
+
+                        <!-- Map 4: LST End -->
+                        <div class="map-card relative overflow-hidden flex flex-col" id="card-lst-end">
+                            <div class="map-card-header justify-between">
+                                <span class="font-bold text-sm tracking-wide" id="lbl-lst-2">LST HEATMAP – 2025</span>
+                                <div class="flex items-center gap-2">
+                                    <input type="range" min="0" max="1" step="0.05" value="0.90" oninput="updateMapOpacity('lst-end', this.value)" class="w-20 accent-amber-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                                    <button type="button" onclick="downloadMapCard('map-lst-end', 'LST_End_Map', mapLSTEnd)" class="px-2.5 py-1 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center gap-1 transition" title="Download Map">
+                                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                        <span>Download</span>
+                                    </button>
+                                    <button type="button" onclick="toggleMapFullscreen('card-lst-end', mapLSTEnd)" class="p-1 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded transition" title="Toggle Fullscreen">
+                                        <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Floating Exit Button (Visible only in Fullscreen) -->
+                            <button type="button" onclick="exitMapFullscreen()" class="exit-fullscreen-btn hidden absolute top-14 right-4 z-[1000] px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl shadow-xl flex items-center gap-1.5 text-xs font-semibold backdrop-blur transition">
+                                <i data-lucide="minimize-2" class="w-3.5 h-3.5 text-amber-400"></i>
+                                <span>Exit (Esc)</span>
+                            </button>
+                            <div id="map-lst-end" class="h-64 relative w-full"></div>
+                            <div class="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+                                <span class="text-[10px] font-semibold text-slate-300">18.0°C</span>
+                                <div class="flex-1 mx-3 h-2.5 rounded-full bg-gradient-to-r from-[#1f78b4] via-[#33a02c] via-[#ffff99] via-[#e31a1c] to-[#8b0000]"></div>
+                                <span class="text-[10px] font-semibold text-slate-300">34.0°C</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROW 3: QUANTITATIVE METRICS & DUAL ANALYTICAL CHARTS -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                    <div class="stat-card">
+                        <h3 class="font-bold text-sm text-teal-400 mb-3 flex items-center gap-2">
+                            <i data-lucide="activity" class="w-4 h-4"></i> Spatio-Temporal Metrics
+                        </h3>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between border-b border-slate-800 pb-1">
+                                <span class="text-slate-400">Baseline Built Area:</span>
+                                <span class="font-bold" id="stat-area-start">-- km²</span>
+                            </div>
+                            <div class="flex justify-between border-b border-slate-800 pb-1">
+                                <span class="text-slate-400">Target Built Area:</span>
+                                <span class="font-bold text-teal-300" id="stat-area-end">-- km²</span>
+                            </div>
+                            <div class="flex justify-between border-b border-slate-800 pb-1">
+                                <span class="text-slate-400">Annual Growth Rate (AGR):</span>
+                                <span class="font-bold text-emerald-400" id="stat-agr">-- %</span>
+                            </div>
+                            <div class="flex justify-between border-b border-slate-800 pb-1">
+                                <span class="text-slate-400">Centroid Shift Vector:</span>
+                                <span class="font-bold text-cyan-400" id="stat-shift">-- km (--)</span>
+                            </div>
+                            <div class="flex justify-between border-b border-slate-800 pb-1">
+                                <span class="text-slate-400">Net SUHI Intensity:</span>
+                                <span class="font-bold text-amber-400" id="stat-suhi-intensity">-- °C</span>
+                            </div>
+                            <div class="flex justify-between border-b border-slate-800 pb-1">
+                                <span class="text-slate-400">Regression Fit (R²):</span>
+                                <span class="font-bold text-orange-400" id="stat-reg-r2">--</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Pixel Correlation (r):</span>
+                                <span class="font-bold text-teal-400" id="stat-corr-r">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card lg:col-span-2 flex flex-col justify-between">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <button onclick="switchChartTab('trend')" id="tab-trend" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-teal-600 text-white transition">Time-Series Trend</button>
+                                <button onclick="switchChartTab('scatter')" id="tab-scatter" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition">Scatter & Regression (R²)</button>
+                            </div>
+                            <button onclick="downloadPDFReport()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg border border-slate-700 text-slate-200 flex items-center gap-1.5">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Download PDF Report
+                            </button>
+                        </div>
+                        <div class="h-48 relative">
+                            <canvas id="suhiTrendChart" class="w-full h-full"></canvas>
+                            <canvas id="suhiScatterChart" class="w-full h-full"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+          <!-- SECTION 3: MODERN ABOUT US PAGE -->
+<!-- SECTION 3: MODERN ABOUT US PAGE -->
+            <div id="about-us-section" class="hidden space-y-6 max-w-6xl mx-auto pb-10">
+                
+                <!-- Self-contained Scroll Animation Styles -->
+                <style>
+                    .scroll-step {
+                        opacity: 0;
+                        transform: translateY(25px);
+                        transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+                    }
+                    .scroll-step.is-visible {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                </style>
+
+                <!-- Hero Header -->
+                <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-950 via-slate-900 to-slate-950 border border-teal-500/30 p-8 shadow-2xl">
+                    <div class="absolute -right-10 -top-10 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div class="relative z-10 space-y-3">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-semibold">
+                            <i data-lucide="info" class="w-3.5 h-3.5"></i> About SUHI Tracker India
+                        </div>
+                        <h1 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+                            Multi-Temporal SUHI Analysis & Urban Thermal Dynamics
+                        </h1>
+                        <p class="text-slate-300 text-sm sm:text-base max-w-3xl leading-relaxed">
+                            Welcome to your go-to platform for understanding how cities heat up over time. SUHI Tracker uses advanced satellite observations to decode Surface Urban Heat Islands (SUHI) across India, helping communities, planners, and citizens visualize changing microclimates and urban growth.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Why Use Our Platform (The Value Proposition Circular) -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        <span>Why Choose SUHI Tracker?</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        Urban heat is one of the biggest hidden challenges of modern growing cities. Here is why our platform gives you the clearest picture:
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                                <i data-lucide="eye" class="w-3.5 h-3.5"></i> Clear Visual Insights
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Transform complex climate numbers into clean, side-by-side maps and interactive timelines that anyone can easily read and understand.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                                <i data-lucide="clock" class="w-3.5 h-3.5"></i> Track Changes Over Time
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Compare historical data across multiple years to see exactly how concrete expansion drives up neighborhood temperatures.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Instant Reports
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Generate and download ready-to-share PDF summary reports for your city or custom-drawn local region with just one click, with facility to download the resultant maps seperately.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- What Data and Satellites We Use -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                        <i data-lucide="globe" class="w-4 h-4"></i>
+                        <span>Powered by Trusted Satellite Data</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        To give you accurate and reliable insights, our platform relies on world-class space technology and open environmental data:
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                                <i data-lucide="radar" class="w-3.5 h-3.5"></i> USGS Landsat Satellites
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                We gather imagery from NASA and USGS Landsat satellites that continuously photograph the Earth. Their thermal sensors capture the actual surface heat of the ground, while optical sensors track green spaces versus concrete buildings.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                                <i data-lucide="cpu" class="w-3.5 h-3.5"></i> Google Earth Engine
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                All satellite records are processed instantly using Google's massive cloud computing network. This removes clouds, filters distortions, and calculates temperatures safely in the background.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Smart Region Sizing & Buffer Logic -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                        <i data-lucide="maximize" class="w-4 h-4"></i>
+                        <span>Flexible Region Selection</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        You are in complete control of what area you want to study. The platform adjusts seamlessly to your choices:
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                                <i data-lucide="map-pin" class="w-3.5 h-3.5"></i> City Presets
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Instantly select major urban hubs and popular districts across India with pre-configured centres with 30 km buffer area around the centre ready for deep-dive analysis.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                                <i data-lucide="crosshair" class="w-3.5 h-3.5"></i> Exact Coordinates
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Input specific angular coordinates i.e latitude and longitude points with a 30-km buffer zone to focus on targeted neighborhoods or default regional grids.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                            <div class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Custom Drawing
+                            </div>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Draw your own custom boundary directly on the interactive map to study your exact neighborhood or project site.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Animated Scroll-Triggered Flowy Ladder Workflow -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                            <i data-lucide="git-commit" class="w-4 h-4"></i>
+                            <span>How Analysis Works</span>
+                        </div>
+                    </div>
+
+                    <!-- Ladder Container -->
+                    <div class="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-teal-500 before:via-cyan-500 before:to-slate-800">
+                        
+                        <!-- Step 1 -->
+                        <div class="scroll-step relative group" style="transition-delay: 100ms;">
+                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-teal-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
+                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-teal-500/40">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-teal-300 uppercase tracking-wider">Step 01 – Choose Your Area</span>
+                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                                </div>
+                                <p class="text-xs text-slate-300">
+                                    Select a city preset, enter coordinate points, or draw a custom boundary around the region you wish to explore.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="scroll-step relative group" style="transition-delay: 250ms;">
+                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-teal-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
+                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-teal-500/40">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-teal-300 uppercase tracking-wider">Step 02 – Gather Satellite Photos</span>
+                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                                </div>
+                                <p class="text-xs text-slate-300">
+                                    The system automatically collects cloud-free historical satellite pictures matching your baseline and target years.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="scroll-step relative group" style="transition-delay: 400ms;">
+                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-cyan-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
+                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-cyan-500/40">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-cyan-300 uppercase tracking-wider">Step 03 – Measure Heat and Buildings</span>
+                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                                </div>
+                                <p class="text-xs text-slate-300">
+                                    Thermal infrared information is translated into surface temperatures, while land cover details isolate growing concrete zones from nature.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Step 4 -->
+                        <div class="scroll-step relative group" style="transition-delay: 550ms;">
+                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-amber-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
+                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-amber-500/40">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-amber-300 uppercase tracking-wider">Step 04 – Calculate Growth Trends</span>
+                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                                </div>
+                                <p class="text-xs text-slate-300">
+                                    Annual growth rates, temperature changes, and direct correlation statistics are calculated instantly behind the scenes.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Step 5 -->
+                        <div class="scroll-step relative group" style="transition-delay: 700ms;">
+                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-emerald-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
+                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-emerald-500/40">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-bold text-emerald-300 uppercase tracking-wider">Step 05 – Explore and Export</span>
+                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                                </div>
+                                <p class="text-xs text-slate-300">
+                                    View your results via synchronized maps and charts, then download presentation-ready PDF reports to share your findings.
+                                </p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Footer Action -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="space-y-1 text-center sm:text-left">
+                        <h4 class="text-sm font-bold text-slate-200">Ready to analyze your region of interest?</h4>
+                    </div>
+                    <button onclick="switchView('dashboard')" class="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-teal-900/50 transition flex items-center gap-2">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Launch Dashboard
+                    </button>
+                </div>
+
+                <!-- Scroll Observer Script to Trigger Ladder Animation -->
+                <script>
+                    document.addEventListener("DOMContentLoaded", () => {
+                        const observerOptions = {
+                            root: null,
+                            rootMargin: '0px',
+                            threshold: 0.15
+                        };
+
+                        const observer = new IntersectionObserver((entries, observer) => {
+                            entries.forEach(entry => {
+                                if (entry.isIntersecting) {
+                                    entry.target.classList.add('is-visible');
+                                }
+                            });
+                        }, observerOptions);
+
+                        document.querySelectorAll('.scroll-step').forEach(step => {
+                            observer.observe(step);
+                        });
+                    });
+                </script>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='dashboard/dashboard.js') }}"></script>
+</body>
+</html>
