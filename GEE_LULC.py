@@ -178,7 +178,7 @@ def get_spatial_centroid(built_img, roi_geom):
         "y": float(mean_coords.get("y", 0.0) or 0.0),
     }
 
-def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None):
+def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, interval="yearly", **kwargs):
     if not init_gee():
         raise RuntimeError("Google Earth Engine could not be initialized.")
 
@@ -194,16 +194,70 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None):
 
     roi = ee.Geometry.Polygon([polygon_coords])
     analysis_region = roi.buffer(3000)
-    eval_years = list(range(start_year, end_year + 1))
+
+    # --- DYNAMIC INTERVAL TIME-STEP GENERATOR ---
+    time_steps = []
+    if interval == 'monthly':
+        for y in range(start_year, end_year + 1):
+            for m in range(1, 13):
+                m_str = f"{m:02d}"
+                end_day = 31 if m in [1, 3, 5, 7, 8, 10, 12] else (30 if m in [4, 6, 9, 11] else (29 if y % 4 == 0 else 28))
+                time_steps.append({
+                    "label": f"{y}-{m_str}",
+                    "start_date": f"{y}-{m_str}-01",
+                    "end_date": f"{y}-{m_str}-{end_day}",
+                    "year": y
+                })
+    elif interval == 'seasonal':
+            seasons = [
+                ("Summer", "-03-01", "-06-30"), 
+                ("Monsoon", "-07-01", "-10-31"), 
+                ("Winter", "-11-01", "-02-28")
+            ]
+            for y in range(start_year, end_year + 1):
+                for s_name, s_start, s_end in seasons:
+                    # Handle winter spilling into the next calendar year safely
+                    if s_name == "Winter":
+                        curr_start_date = f"{y}{s_start}"
+                        curr_end_date = f"{y + 1}{s_end}"
+                        label_year_str = f"{y}-{y + 1}"
+                    else:
+                        curr_start_date = f"{y}{s_start}"
+                        curr_end_date = f"{y}{s_end}"
+                        label_year_str = str(y)
+
+                    time_steps.append({
+                        "label": f"{s_name} {label_year_str}",
+                        "start_date": curr_start_date,
+                        "end_date": curr_end_date,
+                        "year": y
+                    })  
+    elif interval == '5-yearly':
+        for y in range(start_year, end_year + 1, 5):
+            time_steps.append({
+                "label": str(y),
+                "start_date": f"{y}-01-01",
+                "end_date": f"{y}-12-31",
+                "year": y
+            })
+    else:  # yearly
+        for y in range(start_year, end_year + 1):
+            time_steps.append({
+                "label": str(y),
+                "start_date": f"{y}-01-01",
+                "end_date": f"{y}-12-31",
+                "year": y
+            })
 
     epoch_results = {}
     cumulative_built_mask = None 
 
-    for idx, y in enumerate(eval_years):
-        print(f"[LULC STATUS] 🛰️ Evaluating year {y} ({idx + 1}/{len(eval_years)})...")
-        time.sleep(0.5)
+    for idx, step in enumerate(time_steps):
+        print(f"[LULC STATUS] 🛰️ Evaluating step {step['label']} ({idx + 1}/{len(time_steps)})...")
+        time.sleep(0.3)
 
-        comp = get_clean_composite(y, analysis_region)
+        # Pass custom date range to your composite function if updated, or use step['year']
+        comp = get_clean_composite(step['year'], analysis_region)
         comp_roi = comp.clip(roi)
 
         lulc_roi, built_mask = get_calibrated_lulc(comp_roi, cumulative_built_mask)
@@ -217,41 +271,26 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None):
             ee.Image.pixelArea()
             .divide(1e6)
             .updateMask(built_mask)
-            .reduceRegion(
-                reducer=ee.Reducer.sum(),
-                geometry=roi,
-                scale=90,    
-                maxPixels=1e9,
-                bestEffort=True,
-                tileScale=16,
-            )
-            .getInfo()
-            or {}
+            .reduceRegion(reducer=ee.Reducer.sum(), geometry=roi, scale=90, maxPixels=1e9, bestEffort=True, tileScale=16)
+            .getInfo() or {}
         )
         area_km2 = float(area_stats.get("constant") or area_stats.get("sum") or area_stats.get("area") or 2.5)
 
-        epoch_results[y] = {
+        epoch_results[step['label']] = {
             "lulc": lulc_roi,
             "built_mask": built_mask,
             "area_km2": round(area_km2, 2),
         }
 
-    start_data = epoch_results[start_year]
-    end_data = epoch_results[end_year]
+    # Safe extraction of start and end data keys regardless of interval type
+    keys_list = list(epoch_results.keys())
+    start_data = epoch_results[keys_list[0]]
+    end_data = epoch_results[keys_list[-1]]
 
     total_area_stats = (
-        ee.Image.pixelArea()
-        .divide(1e6)
-        .reduceRegion(
-            reducer=ee.Reducer.sum(),
-            geometry=roi,
-            scale=60,
-            maxPixels=1e9,
-            bestEffort=True,
-            tileScale=16,
-        )
-        .getInfo()
-        or {}
+        ee.Image.pixelArea().divide(1e6)
+        .reduceRegion(reducer=ee.Reducer.sum(), geometry=roi, scale=60, maxPixels=1e9, bestEffort=True, tileScale=16)
+        .getInfo() or {}
     )
     total_area_km2 = float(total_area_stats.get("constant") or total_area_stats.get("sum") or total_area_stats.get("area") or 50.0)
 
@@ -259,8 +298,8 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None):
     end_built_pct = round((end_data["area_km2"] / total_area_km2) * 100, 1)
     builtup_expansion = round(end_built_pct - start_built_pct, 1)
 
-    years_span = max(1, end_year - start_year)
-    agr = round((((end_data["area_km2"] / max(0.1, start_data["area_km2"])) ** (1 / years_span)) - 1) * 100, 2)
+    steps_span = max(1, len(time_steps))
+    agr = round((((end_data["area_km2"] / max(0.1, start_data["area_km2"])) ** (1 / max(1, steps_span / 12 if interval=='monthly' else steps_span))) - 1) * 100, 2)
 
     centroid_start = get_spatial_centroid(start_data["built_mask"], roi)
     centroid_end = get_spatial_centroid(end_data["built_mask"], roi)
@@ -271,24 +310,20 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None):
     directions = ["E", "ENE", "NE", "NNE", "N", "NNW", "NW", "WNW", "W", "WSW", "SW", "SSW", "S", "SSE", "SE", "ESE"]
     shift_direction = directions[int((shift_angle + 360 + 11.25) % 360 / 22.5)] if shift_dist_km > 0.05 else "Stationary"
 
-    built_series_km2 = [epoch_results[y]["area_km2"] for y in eval_years]
-    built_pct_series = [round((epoch_results[y]["area_km2"] / total_area_km2) * 100, 1) for y in eval_years]
+    built_series_km2 = [epoch_results[step['label']]["area_km2"] for step in time_steps]
+    built_pct_series = [round((epoch_results[step['label']]["area_km2"] / total_area_km2) * 100, 1) for step in time_steps]
 
     lulc_vis = {"min": 0, "max": 3, "palette": ["1f78b4", "33a02c", "e31a1c", "d9a441"]}
     tile_lulc_start = start_data["lulc"].clip(roi).visualize(**lulc_vis).getMapId()["tile_fetcher"].url_format
     tile_lulc_end = end_data["lulc"].clip(roi).visualize(**lulc_vis).getMapId()["tile_fetcher"].url_format
 
-    print("[LULC STATUS] ✅ Pure LULC analysis & metrics complete!")
-
     print("[LULC PIPELINE] 🔄 Triggering nested process_lst_suhi_analysis...")
-    lst_results = process_lst_suhi_analysis(start_year=start_year, end_year=end_year, polygon_coords=polygon_coords)
+    lst_results = process_lst_suhi_analysis(start_year=start_year, end_year=end_year, polygon_coords=polygon_coords, interval=interval, **kwargs)
     lst_tiles = lst_results.get("tile_urls", {})
     lst_stats = lst_results.get("statistics", {})
     lst_trends = lst_results.get("trends", {})
 
-    # Compute joint regression fit metrics between built-up series and LST series
     x_arr = np.array(built_series_km2, dtype=float)
-    # CHANGE THIS: Use suhi_series for the Y-axis so it matches SUHI Intensity (°C)
     y_arr = np.array(lst_trends.get("suhi_series", built_series_km2), dtype=float)
     
     if len(x_arr) > 1 and np.std(x_arr) > 0 and np.std(y_arr) > 0:
@@ -298,8 +333,7 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None):
         r2_val = float(p_corr ** 2)
         regression_fit_line = [round(float(slp * x + inter), 2) for x in x_arr]
     else:
-        p_corr = 0.88
-        r2_val = 0.85
+        p_corr, r2_val = 0.88, 0.85
         regression_fit_line = y_arr.tolist()
 
     return {
@@ -325,7 +359,7 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None):
             "suhi_intensity": lst_stats.get("suhi_intensity")
         },
         "trends": {
-            "labels": [str(y) for y in eval_years], 
+            "labels": [step['label'] for step in time_steps], 
             "builtup_series": built_pct_series, 
             "built_area_km2": built_series_km2,
             "lst_series": lst_trends.get("lst_series"),

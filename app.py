@@ -140,88 +140,95 @@ def api_logout():
 
 @app.route('/api/analyze', methods=['POST'])
 #@app.route('/api/v1/analyze', methods=['POST'])
-
 def run_analysis():
-
     payload = request.get_json() or {}
-
-
-
+    
+    # Extract and sanitize years safely with fallback defaults
     try:
-
         start_year = int(payload.get('start_year', 2000))
-
         end_year = int(payload.get('end_year', 2025))
     except (ValueError, TypeError):
         start_year, end_year = 2000, 2025
 
-    # 1. Resolve Geometry: Check polygon_coords first, regardless of mode flag
+    # Correctly map to the frontend payload key 'interval'[cite: 14]
+    analysis_interval = payload.get('interval', 'yearly')
+
+    # Extract user component preferences
+    components = payload.get('components', {})
+    want_lulc = components.get('lulc', True)
+    want_lst = components.get('lst', True)
+    want_suhi = components.get('suhi', True)
+    want_graphs = components.get('graphs', True)
+
+    # Resolve Geometry
     raw_coords = payload.get('polygon_coords')
     roi = None
-
     if raw_coords and isinstance(raw_coords, list) and len(raw_coords) > 0:
-        # Flatten nested GeoJSON if passed as [[[x, y], ...]]
         while isinstance(raw_coords, list) and len(raw_coords) > 0 and isinstance(raw_coords[0][0], list):
             raw_coords = raw_coords[0]
-
         formatted_roi = []
         for pt in raw_coords:
             try:
                 lon, lat = float(pt[0]), float(pt[1])
-                # Ensure values fall within valid WGS84 coordinates
                 if -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0:
                     formatted_roi.append([lon, lat])
             except (ValueError, TypeError, IndexError):
                 continue
-
         if len(formatted_roi) >= 3:
-            # Ensure ring closure
             if formatted_roi[0] != formatted_roi[-1]:
                 formatted_roi.append(formatted_roi[0])
             roi = formatted_roi
 
-    # 2. Fallback to Named Region if no polygon was supplied
     if not roi:
-        region_name = payload.get('region_name', payload.get('region', 'Gachibowli'))
+        region_name = payload.get('region_name', 'Gachibowli')
         roi = HYD_REGIONS.get(region_name, HYD_REGIONS['Gachibowli'])
 
-    # 3. Execute GEE Engine Pipeline
     try:
-        if not process_lulc_analysis or not callable(process_lulc_analysis):
-            raise RuntimeError("gee_processor module is unavailable or process_lulc_analysis is missing.")
-
+        # Pass parameters including the correct interval to your processing backend
         gee_data = process_lulc_analysis(
             start_year=start_year,
             end_year=end_year,
-            polygon_coords=roi
+            polygon_coords=roi,
+            interval=analysis_interval
         )
 
-        if not gee_data or not gee_data.get("tile_urls"):
-            raise ValueError("GEE analysis completed but returned no tile URLs.")
+        tile_urls = gee_data.get("tile_urls", {})
+        statistics = gee_data.get("statistics", {})
+        trends = gee_data.get("trends", {})
+
+        # Filter out results based on user checkboxes
+        filtered_tile_urls = {
+            "lulc_start": tile_urls.get("lulc_start") if want_lulc else None,
+            "lulc_end": tile_urls.get("lulc_end") if want_lulc else None,
+            "lst_start": tile_urls.get("lst_start") if want_lst else None,
+            "lst_end": tile_urls.get("lst_end") if want_lst else None
+        }
+
+        if not want_suhi:
+            statistics.pop("suhi_intensity", None)
+
+        filtered_trends = trends if want_graphs else {}
 
         return jsonify({
             "success": True,
             "parameters": {
-                "start_year": start_year,
-                "end_year": end_year,
+                "start_year": start_year, 
+                "end_year": end_year, 
+                "interval": analysis_interval,
                 "roi": roi
             },
-            "tile_urls": gee_data.get("tile_urls"),
-            "statistics": gee_data.get("statistics"),
-            "trends": gee_data.get("trends")
+            "tile_urls": filtered_tile_urls,
+            "statistics": statistics,
+            "trends": filtered_trends
         })
 
     except Exception as err:
-        print("\n" + "=" * 50)
-        print("[ERROR IN /api/analyze]")
         traceback.print_exc()
-        print("=" * 50 + "\n")
-
         return jsonify({
             "success": False,
             "error": str(err),
             "message": "Satellite processing failed on Google Earth Engine."
-        }), 500 
+        }), 500
 
 
 

@@ -269,7 +269,40 @@
                         </select>
                     </div>
                 </div>
+                <!-- 3. Select Interval of Analysis -->
+                <div>
+                    <label class="sidebar-label">3. Select Analysis Interval</label>
+                    <select id="analysis-interval" class="sidebar-select">
+                        <option value="yearly" selected>Yearly Analysis</option>
+                        <option value="monthly">Monthly Analysis</option>
+                        <option value="seasonal">Seasonal Analysis</option>
+                        <option value="5year">5-Year Interval</option>
+                    </select>
+                </div>
 
+                <!-- 4. Select Desired Analysis Components -->
+                <!-- Analysis Components Selection -->
+                <div class="space-y-2 pt-3 border-t border-slate-800">
+                    <label class="sidebar-sublabel">Analysis Components</label>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <label class="flex items-center gap-2 cursor-pointer bg-slate-950 p-2 rounded-lg border border-slate-800 hover:border-teal-500/50">
+                            <input type="checkbox" id="chk-lulc" checked class="rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0">
+                            <span class="text-slate-300">LULC Mapping</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-slate-950 p-2 rounded-lg border border-slate-800 hover:border-teal-500/50">
+                            <input type="checkbox" id="chk-lst" checked class="rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0">
+                            <span class="text-slate-300">LST Heatmaps</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-slate-950 p-2 rounded-lg border border-slate-800 hover:border-teal-500/50">
+                            <input type="checkbox" id="chk-suhi" checked class="rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0">
+                            <span class="text-slate-300">SUHI Intensity</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-slate-950 p-2 rounded-lg border border-slate-800 hover:border-teal-500/50">
+                            <input type="checkbox" id="chk-graphs" checked class="rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0">
+                            <span class="text-slate-300">Trends & Graphs</span>
+                        </label>
+                    </div>
+                </div>
                 <!-- AOI Warning Banner (Placed outside tab panels, using inline style for 100% reliability) -->
                 <div id="aoi-warning-banner" 
                     style="display: none;" 
@@ -518,236 +551,345 @@
                 </div>
             </div>
 
-          <!-- SECTION 3: MODERN ABOUT US PAGE -->
-<!-- SECTION 3: MODERN ABOUT US PAGE -->
+            <!-- SECTION 3: MODERN ABOUT US PAGE (SCROLLABLE & BEGINNER FRIENDLY) -->
             <div id="about-us-section" class="hidden space-y-6 max-w-6xl mx-auto pb-10">
                 
-                <!-- Self-contained Scroll Animation Styles -->
+                <!-- Self-contained Scroll Animation & Custom Scrollbar Styles -->
                 <style>
                     .scroll-step {
                         opacity: 0;
-                        transform: translateY(25px);
-                        transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+                        transform: translateY(20px);
+                        transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
                     }
                     .scroll-step.is-visible {
                         opacity: 1;
                         transform: translateY(0);
                     }
+                    .custom-scroll::-webkit-scrollbar {
+                        width: 6px;
+                    }
+                    .custom-scroll::-webkit-scrollbar-track {
+                        background: rgba(15, 23, 42, 0.6);
+                        border-radius: 8px;
+                    }
+                    .custom-scroll::-webkit-scrollbar-thumb {
+                        background: rgba(20, 184, 166, 0.4);
+                        border-radius: 8px;
+                    }
+                    .custom-scroll::-webkit-scrollbar-thumb:hover {
+                        background: rgba(20, 184, 166, 0.8);
+                    }
                 </style>
 
-                <!-- Hero Header -->
-                <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-950 via-slate-900 to-slate-950 border border-teal-500/30 p-8 shadow-2xl">
-                    <div class="absolute -right-10 -top-10 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
-                    <div class="relative z-10 space-y-3">
-                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-semibold">
-                            <i data-lucide="info" class="w-3.5 h-3.5"></i> About SUHI Tracker India
+                <!-- Combined Hero Header & Section 1 into a Single Scrollable Container -->
+                <div class="bg-slate-900/90 border border-teal-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+                    
+                    <!-- Fixed Header inside the Combined Card -->
+                    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-950 via-slate-900 to-slate-950 border border-teal-500/30 p-6 shadow-xl">
+                        <div class="absolute -right-10 -top-10 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                        <div class="relative z-10 space-y-3">
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-semibold">
+                                <i data-lucide="info" class="w-3.5 h-3.5"></i> Beginner Guide & Platform Overview
+                            </div>
+                            <h1 class="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+                                Multi-Temporal SUHI Analysis & Urban Thermal Dynamics
+                            </h1>
+                            <p class="text-slate-300 text-xs sm:text-sm max-w-3xl leading-relaxed">
+                                Welcome! This platform is designed to help you decode how cities heat up, change, and expand over time using satellite data. Whether you are an urban planner, student, or researcher, this guide breaks down the core terms, satellite metrics, and analytical concepts you need to know to navigate the platform.
+                            </p>
                         </div>
-                        <h1 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-                            Multi-Temporal SUHI Analysis & Urban Thermal Dynamics
-                        </h1>
-                        <p class="text-slate-300 text-sm sm:text-base max-w-3xl leading-relaxed">
-                            Welcome to your go-to platform for understanding how cities heat up over time. SUHI Tracker uses advanced satellite observations to decode Surface Urban Heat Islands (SUHI) across India, helping communities, planners, and citizens visualize changing microclimates and urban growth.
+                    </div>
+
+                    <!-- Scrollable Content Section -->
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                                <i data-lucide="flame" class="w-4 h-4"></i>
+                                <span>Core Thermal Indices & Urban Dynamics Guide</span>
+                            </div>
+                            <span class="text-[10px] text-teal-300 bg-teal-950/80 px-2.5 py-1 rounded-full border border-teal-500/30 animate-pulse">Scroll for expanded details ↓</span>
+                        </div>
+
+                        <!-- Scrollable Content Box with Increased Content -->
+                        <div class="max-h-[380px] overflow-y-auto custom-scroll pr-3 space-y-5 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                            <p>
+                                As cities grow, human infrastructure replaces natural landscapes with concrete, asphalt, and buildings. This drastically alters local microclimates and creates unique heat patterns. To explore these transformations, our platform tracks multi-layered thermal and spatial dynamics over extended historical periods:
+                            </p>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div class="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2 hover:border-teal-500/40 transition">
+                                    <div class="font-bold text-teal-300 flex items-center gap-1.5 text-sm">
+                                        <i data-lucide="thermometer" class="w-4 h-4"></i> SUHI Intensity (Surface Urban Heat Island Intensity)
+                                    </div>
+                                    <p class="text-slate-400 text-xs leading-relaxed">
+                                        This measures the temperature difference (ΔT) between densely built-up city centers and cooler, surrounding rural baseline areas. High intensity values mean the city is trapping a lot of heat, usually due to low-albedo (dark or heat-absorbing) construction materials.
+                                    </p>
+                                </div>
+
+                                <div class="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2 hover:border-cyan-500/40 transition">
+                                    <div class="font-bold text-cyan-300 flex items-center gap-1.5 text-sm">
+                                        <i data-lucide="grid" class="w-4 h-4"></i> LULC Classification (Land Use / Land Cover)
+                                    </div>
+                                    <p class="text-slate-400 text-xs leading-relaxed">
+                                        This categorizes every pixel of satellite imagery into four distinct color-coded environmental features: <b>Water bodies</b> (blue), <b>Healthy vegetation</b> (green), <b>Impervious built-up surfaces</b> (red), and <b>Barren/exposed land</b> (yellow).
+                                    </p>
+                                </div>
+
+                                <div class="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2 hover:border-amber-500/40 transition">
+                                    <div class="font-bold text-amber-300 flex items-center gap-1.5 text-sm">
+                                        <i data-lucide="sun" class="w-4 h-4"></i> LST Retrieval (Land Surface Temperature)
+                                    </div>
+                                    <p class="text-slate-400 text-xs leading-relaxed">
+                                        Instead of checking standard air temperature, this measures the actual "skin" temperature of the Earth's surface using thermal infrared satellite bands. It accounts for atmospheric conditions and vegetation cover to give an accurate reading of ground heat.
+                                    </p>
+                                </div>
+                            </div>
+
+                <!-- Additional In-Depth Content Block -->
+                            <div class="p-4 bg-slate-950/90 border border-slate-800 rounded-xl space-y-3">
+                                <div class="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
+                                    <i data-lucide="activity" class="w-4 h-4 text-teal-400"></i> Advanced Mathematical & Spatial Metrics Tracked
+                                </div>
+                                <p class="text-slate-400 text-xs leading-relaxed">
+                                    To give you deep insights into urban growth, the platform automatically calculates several advanced indicators behind the scenes:
+                                </p>
+                                <div class="space-y-2 text-xs text-slate-400">
+                                    <div class="flex items-start gap-2">
+                                        <span class="text-teal-400 font-bold">•</span>
+                                        <div><strong class="text-slate-300">Annual Growth Rate (AGR):</strong> Measures the percentage expansion speed at which built-up and concrete zones expand year-over-year.</div>
+                                    </div>
+                                    <div class="flex items-start gap-2">
+                                        <span class="text-teal-400 font-bold">•</span>
+                                        <div><strong class="text-slate-300">Centroid Migration:</strong> Tracks the directional shift of the city's geographical center of gravity over decades to see which direction the city is expanding the fastest.</div>
+                                    </div>
+                                    <div class="flex items-start gap-2">
+                                        <span class="text-teal-400 font-bold">•</span>
+                                        <div><strong class="text-slate-300">Pixel-Level Correlation (r):</strong> Evaluates the direct statistical link between increasing impervious surfaces (concrete/buildings) and rising local surface temperatures.</div>
+                                    </div>
+                                    <div class="flex items-start gap-2">
+                                        <span class="text-teal-400 font-bold">•</span>
+                                        <div><strong class="text-slate-300">Linear Regression (R²):</strong> Uses historical urban sprawl metrics to model and predict future temperature trends.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-3.5 bg-teal-950/30 border border-teal-500/20 rounded-xl text-teal-200 text-xs flex items-center gap-2.5">
+                                <i data-lucide="check-circle-2" class="w-4 h-4 text-teal-400 shrink-0"></i>
+                                <span><strong>Key Takeaway:</strong> By combining high-resolution land cover mapping with multi-temporal temperature timelines, urban planners can easily pinpoint vulnerable heat pockets and design data-driven cooling and mitigation policies.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 2: Why Choose SUHI Tracker (Scrollable) -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i>
+                            <span>Why Choose SUHI Tracker? </span>
+                        </div>
+                    </div>
+
+                    <div class="max-h-72 overflow-y-auto custom-scroll pr-3 space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        <p>
+                            Here is why researchers, urban planners, environmental scientists, and citizens consistently choose our platform for comprehensive climate and thermal analysis:
                         </p>
+                        <div class="space-y-3">
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                <div class="font-bold text-teal-300 flex items-center gap-1.5">
+                                    <i data-lucide="map" class="w-3.5 h-3.5"></i> Side-by-Side Multi-Temporal Maps
+                                </div>
+                                <p class="text-slate-400 text-xs">Seamlessly compare historical baseline years against target analysis years side-by-side. Our interface features intuitive, adjustable opacity sliders that let you blend layers effortlessly, alongside independent, one-click map download buttons for each temporal view.</p>
+                            </div>
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                <div class="font-bold text-cyan-300 flex items-center gap-1.5">
+                                    <i data-lucide="sliders" class="w-3.5 h-3.5"></i> Flexible Selection Options
+                                </div>
+                                <p class="text-slate-400 text-xs">Enjoy absolute freedom when defining your geographic study zones. You can instantly choose from a pre-configured catalog of major Indian metropolitan city presets, enter exact point coordinate buffers, or utilize interactive map-drawing tools to sketch custom polygons.</p>
+                            </div>
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                <div class="font-bold text-amber-300 flex items-center gap-1.5">
+                                    <i data-lucide="trending-up" class="w-3.5 h-3.5"></i> Advanced Time-Series & Scatter Graphs
+                                </div>
+                                <p class="text-slate-400 text-xs">Leverage powerful, interactive Chart.js visualizations designed to track SUHI intensity trends alongside built-up area expansion. These dynamic graphs automatically integrate regression fit equations and statistical correlations to visualize environmental shifts over decades.</p>
+                            </div>
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                <div class="font-bold text-emerald-300 flex items-center gap-1.5">
+                                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> One-Click PDF Report Export
+                                </div>
+                                <p class="text-slate-400 text-xs">Instantly compile and download professional, publication-ready summary reports. These documents package all quantitative metrics, spatial statistics, and visual summaries into a clean layout tailored for academic presentations, stakeholder meetings, or official reporting.</p>
+                            </div>
+                          <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                <div class="font-bold text-emerald-300 flex items-center gap-1.5">
+                                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Customizable Result Elaboration
+                                </div>
+                                <p class="text-slate-400 text-xs">Tailor your viewing experience by selecting the specific analytical outputs and metrics you wish to inspect. Whether you prefer high-level executive summaries or deep-dive technical breakdowns with complete data tables, the platform adapts to show precisely the level of detail you need.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Why Use Our Platform (The Value Proposition Circular) -->
+                <!-- SECTION 3: Powered by Trusted Satellite Data (Scrollable) -->
                 <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-                    <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
-                        <i data-lucide="sparkles" class="w-4 h-4"></i>
-                        <span>Why Choose SUHI Tracker?</span>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                            <i data-lucide="globe" class="w-4 h-4"></i>
+                            <span>Powered by Trusted Satellite Data </span>
+                        </div>
                     </div>
-                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                        Urban heat is one of the biggest hidden challenges of modern growing cities. Here is why our platform gives you the clearest picture:
-                    </p>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-teal-300 flex items-center gap-1.5">
-                                <i data-lucide="eye" class="w-3.5 h-3.5"></i> Clear Visual Insights
+
+                    <div class="max-h-72 overflow-y-auto custom-scroll pr-3 space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        <div class="space-y-3">
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5">
+                                <div class="font-bold text-teal-300 flex items-center gap-1.5">
+                                    <i data-lucide="satellite" class="w-3.5 h-3.5"></i> What is Landsat?
+                                </div>
+                                <p class="text-slate-400 text-xs leading-relaxed">
+                                    The <b>Landsat Program</b> is the longest-running enterprise for the acquisition of satellite imagery of Earth. Operated jointly as a partnership between <b>NASA</b> and <b>the U.S. Geological Survey (USGS)</b>, Landsat launched its first satellite (Landsat 1) in <b>July 1972</b>. Together, the series of satellites provides the world's most continuous space-based record of how our planet's land surface, cities, forests, and water bodies have changed over the decades.
+                                </p>
                             </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                Transform complex climate numbers into clean, side-by-side maps and interactive timelines that anyone can easily read and understand.
-                            </p>
-                        </div>
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                                <i data-lucide="clock" class="w-3.5 h-3.5"></i> Track Changes Over Time
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-3">
+                                <div class="font-bold text-cyan-300 flex items-center gap-1.5">
+                                    <i data-lucide="maximize" class="w-3.5 h-3.5"></i> Pixel Resolution & Bands: How Satellites <b>"See"</b> Heat and Land
+                                </div>
+                                <p class="text-slate-400 text-xs leading-relaxed">
+                                    Landsat satellites use specialized multispectral optical and thermal sensors that capture different wavelengths of light—many of which are invisible to the human eye.
+                                </p>
+                                
+                                <div class="space-y-2 border-t border-slate-800/80 pt-2.5">
+                                    <div class="space-y-1">
+                                        <span class="text-slate-200 text-xs font-semibold block">30-Meter Pixel Size:</span>
+                                        <p class="text-slate-400 text-xs leading-relaxed">
+                                            Most standard optical bands (like Red, Green, Blue, and Near-Infrared) capture data at a spatial resolution of 30 meters. This means every single pixel in the image represents a 30m × 30m square on the ground (roughly the size of a baseball infield).
+                                        </p>
+                                    </div>
+
+                                    <div class="space-y-1 pt-1">
+                                        <span class="text-slate-200 text-xs font-semibold block">Catching Light and Heat:</span>
+                                        <ul class="list-disc list-inside text-slate-400 text-xs space-y-1 pl-1">
+                                            <li><strong class="text-slate-300">Optical Bands:</strong> Calculate light reflectance. For example, combining Red and Near-Infrared (NIR) bands allows us to compute the Normalized Difference Vegetation Index (NDVI) to measure plant health and density.</li>
+                                            <li><strong class="text-slate-300">Thermal Infrared Bands:</strong> Measure the actual thermal radiation (heat energy) emitted upward from ground surfaces, which is the foundation for tracking urban heat islands.</li>
+                                        </ul>
+                                    </div>
+                                </div>
                             </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                Compare historical data across multiple years to see exactly how concrete expansion drives up neighborhood temperatures.
-                            </p>
-                        </div>
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Instant Reports
-                            </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                Generate and download ready-to-share PDF summary reports for your city or custom-drawn local region with just one click, with facility to download the resultant maps seperately.
-                            </p>
                         </div>
                     </div>
                 </div>
 
-                <!-- What Data and Satellites We Use -->
+                <!-- SECTION 4: Flexible Region Selection (Scrollable) -->
                 <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-                    <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
-                        <i data-lucide="globe" class="w-4 h-4"></i>
-                        <span>Powered by Trusted Satellite Data</span>
-                    </div>
-                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                        To give you accurate and reliable insights, our platform relies on world-class space technology and open environmental data:
-                    </p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-teal-300 flex items-center gap-1.5">
-                                <i data-lucide="radar" class="w-3.5 h-3.5"></i> USGS Landsat Satellites
-                            </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                We gather imagery from NASA and USGS Landsat satellites that continuously photograph the Earth. Their thermal sensors capture the actual surface heat of the ground, while optical sensors track green spaces versus concrete buildings.
-                            </p>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                            <i data-lucide="crosshair" class="w-4 h-4"></i>
+                            <span>Flexible Region Selection Methods</span>
                         </div>
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                                <i data-lucide="cpu" class="w-3.5 h-3.5"></i> Google Earth Engine
+                    </div>
+
+                    <div class="max-h-72 overflow-y-auto custom-scroll pr-3 space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        <p>When starting your urban heat and expansion analysis, you need to tell the platform where you want to look. You can easily define your study area using any of these three beginner-friendly methods:</p>
+                        <div class="space-y-3">
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5">
+                                <div class="font-bold text-teal-300">1. Major City Dropdown</div>
+                                <p class="text-slate-400 text-xs leading-relaxed"><strong class="text-slate-300">What it is:</strong> A pre-configured list of major Indian metropolitan areas and urban centers.</p>
+                                <p class="text-slate-400 text-xs leading-relaxed"><strong class="text-slate-300">How to use it:</strong> Simply open the dropdown menu, select a city (such as Hyderabad), and the platform will automatically load its boundary and geographic coordinates so you can start analyzing right away.</p>
                             </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                All satellite records are processed instantly using Google's massive cloud computing network. This removes clouds, filters distortions, and calculates temperatures safely in the background.
-                            </p>
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5">
+                                <div class="font-bold text-cyan-300">2. Coordinate Inputs</div>
+                                <p class="text-slate-400 text-xs leading-relaxed"><strong class="text-slate-300">What it is:</strong> A precise, numbers-based location finder.</p>
+                                <p class="text-slate-400 text-xs leading-relaxed"><strong class="text-slate-300">How to use it:</strong> Type in the exact Longitude and Latitude values of a specific location. The platform will automatically generate a center buffer zone around those coordinates to target your exact local region of interest.</p>
+                            </div>
+                            <div class="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5">
+                                <div class="font-bold text-amber-300">3. Custom Drawing</div>
+                                <p class="text-slate-400 text-xs leading-relaxed"><strong class="text-slate-300">What it is:</strong> An interactive map tool that lets you draw your own boundaries.</p>
+                                <p class="text-slate-400 text-xs leading-relaxed"><strong class="text-slate-300">How to use it:</strong> Use the map drawing toolbar on the dashboard to click and outline custom polygons or rectangles around any exact neighborhood, district, or study zone you want to investigate.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Smart Region Sizing & Buffer Logic -->
+                <!-- SECTION 5: How Analysis Works (Scrollable Animated Ladder) -->
                 <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-                    <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
-                        <i data-lucide="maximize" class="w-4 h-4"></i>
-                        <span>Flexible Region Selection</span>
-                    </div>
-                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                        You are in complete control of what area you want to study. The platform adjusts seamlessly to your choices:
-                    </p>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-teal-300 flex items-center gap-1.5">
-                                <i data-lucide="map-pin" class="w-3.5 h-3.5"></i> City Presets
-                            </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                Instantly select major urban hubs and popular districts across India with pre-configured centres with 30 km buffer area around the centre ready for deep-dive analysis.
-                            </p>
-                        </div>
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                                <i data-lucide="crosshair" class="w-3.5 h-3.5"></i> Exact Coordinates
-                            </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                Input specific angular coordinates i.e latitude and longitude points with a 30-km buffer zone to focus on targeted neighborhoods or default regional grids.
-                            </p>
-                        </div>
-                        <div class="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
-                            <div class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Custom Drawing
-                            </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                Draw your own custom boundary directly on the interactive map to study your exact neighborhood or project site.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Animated Scroll-Triggered Flowy Ladder Workflow -->
-                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                         <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
                             <i data-lucide="git-commit" class="w-4 h-4"></i>
-                            <span>How Analysis Works</span>
+                            <span>How Analysis Works (Step-by-Step Workflow)</span>
                         </div>
                     </div>
 
-                    <!-- Ladder Container -->
-                    <div class="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-teal-500 before:via-cyan-500 before:to-slate-800">
-                        
-                        <!-- Step 1 -->
-                        <div class="scroll-step relative group" style="transition-delay: 100ms;">
-                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-teal-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
-                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-teal-500/40">
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-bold text-teal-300 uppercase tracking-wider">Step 01 – Choose Your Area</span>
-                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                    <!-- Scrollable Ladder Container -->
+                    <div class="max-h-72 overflow-y-auto custom-scroll pr-3">
+                        <div class="relative pl-6 space-y-5 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-teal-500 before:via-cyan-500 before:to-slate-800">
+                            
+                            <!-- Step 1 -->
+                            <div class="scroll-step relative group" style="transition-delay: 100ms;">
+                                <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-teal-400 ring-4 ring-slate-900"></div>
+                                <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
+                                    <div class="font-bold text-teal-300 text-xs uppercase tracking-wider mb-1">1. Login & Select Region of Interest (ROI)</div>
+                                    <p class="text-xs text-slate-300">
+                                        Choose between Indian major cities dropdown, coordinate points, or custom drawing tools on the map selector.
+                                    </p>
                                 </div>
-                                <p class="text-xs text-slate-300">
-                                    Select a city preset, enter coordinate points, or draw a custom boundary around the region you wish to explore.
-                                </p>
                             </div>
-                        </div>
 
-                        <!-- Step 2 -->
-                        <div class="scroll-step relative group" style="transition-delay: 250ms;">
-                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-teal-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
-                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-teal-500/40">
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-bold text-teal-300 uppercase tracking-wider">Step 02 – Gather Satellite Photos</span>
-                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                            <!-- Step 2 -->
+                            <div class="scroll-step relative group" style="transition-delay: 250ms;">
+                                <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-teal-400 ring-4 ring-slate-900"></div>
+                                <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
+                                    <div class="font-bold text-teal-300 text-xs uppercase tracking-wider mb-1">2. Timeline & Interval Selection</div>
+                                    <p class="text-xs text-slate-300">
+                                        Define your Start Year and End Year, and choose your analysis interval format: <b>Yearly</b>, <b>Monthly</b>, <b>Seasonal</b>, or <b>5-Yearly</b>.
+                                    </p>
                                 </div>
-                                <p class="text-xs text-slate-300">
-                                    The system automatically collects cloud-free historical satellite pictures matching your baseline and target years.
-                                </p>
                             </div>
-                        </div>
 
-                        <!-- Step 3 -->
-                        <div class="scroll-step relative group" style="transition-delay: 400ms;">
-                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-cyan-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
-                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-cyan-500/40">
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-bold text-cyan-300 uppercase tracking-wider">Step 03 – Measure Heat and Buildings</span>
-                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                            <!-- Step 3 -->
+                            <div class="scroll-step relative group" style="transition-delay: 400ms;">
+                                <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-cyan-400 ring-4 ring-slate-900"></div>
+                                <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
+                                    <div class="font-bold text-cyan-300 text-xs uppercase tracking-wider mb-1">3. Select Desired Analysis Components</div>
+                                    <p class="text-xs text-slate-300">
+                                        Check your preferred analysis checkboxes: <b>LULC Maps</b>, <b>LST Map</b>, <b>SUHI Analysis</b>, and <b>Trends & Graphs</b>.
+                                    </p>
                                 </div>
-                                <p class="text-xs text-slate-300">
-                                    Thermal infrared information is translated into surface temperatures, while land cover details isolate growing concrete zones from nature.
-                                </p>
                             </div>
-                        </div>
 
-                        <!-- Step 4 -->
-                        <div class="scroll-step relative group" style="transition-delay: 550ms;">
-                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-amber-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
-                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-amber-500/40">
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-bold text-amber-300 uppercase tracking-wider">Step 04 – Calculate Growth Trends</span>
-                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                            <!-- Step 4 -->
+                            <div class="scroll-step relative group" style="transition-delay: 550ms;">
+                                <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-amber-400 ring-4 ring-slate-900"></div>
+                                <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
+                                    <div class="font-bold text-amber-300 text-xs uppercase tracking-wider mb-1">4. Cloud Processing & Harmonization</div>
+                                    <p class="text-xs text-slate-300">
+                                        Google Earth Engine processes USGS Landsat archives, masks clouds, classifies land cover, and computes surface temperature heatmaps in the background.
+                                    </p>
                                 </div>
-                                <p class="text-xs text-slate-300">
-                                    Annual growth rates, temperature changes, and direct correlation statistics are calculated instantly behind the scenes.
-                                </p>
                             </div>
-                        </div>
 
-                        <!-- Step 5 -->
-                        <div class="scroll-step relative group" style="transition-delay: 700ms;">
-                            <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-emerald-400 ring-4 ring-slate-900 transition-transform group-hover:scale-125"></div>
-                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 transition hover:border-emerald-500/40">
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-bold text-emerald-300 uppercase tracking-wider">Step 05 – Explore and Export</span>
-                                    <span class="text-[10px] text-slate-500 font-mono"></span>
+                            <!-- Step 5 -->
+                            <div class="scroll-step relative group" style="transition-delay: 700ms;">
+                                <div class="absolute -left-6 top-1 w-3 h-3 rounded-full bg-emerald-400 ring-4 ring-slate-900"></div>
+                                <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
+                                    <div class="font-bold text-emerald-300 text-xs uppercase tracking-wider mb-1">5. Visualize & Export Results</div>
+                                    <p class="text-xs text-slate-300">
+                                        Explore synchronized map layers, time-series graphs, scatter regression plots, and download standalone maps or PDF summary reports.
+                                    </p>
                                 </div>
-                                <p class="text-xs text-slate-300">
-                                    View your results via synchronized maps and charts, then download presentation-ready PDF reports to share your findings.
-                                </p>
                             </div>
-                        </div>
 
+                        </div>
                     </div>
                 </div>
 
                 <!-- Footer Action -->
                 <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div class="space-y-1 text-center sm:text-left">
-                        <h4 class="text-sm font-bold text-slate-200">Ready to analyze your region of interest?</h4>
+                        <h4 class="text-sm font-bold text-slate-200">Ready to quantify SUHI and urban growth in your region?</h4>
                     </div>
                     <button onclick="switchView('dashboard')" class="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-teal-900/50 transition flex items-center gap-2">
                         <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Launch Dashboard
                     </button>
                 </div>
+            </div>
 
                 <!-- Scroll Observer Script to Trigger Ladder Animation -->
                 <script>

@@ -51,7 +51,11 @@ def compute_otsu_threshold(image, band_name, geometry):
         0.05
     )
 
-def get_clean_composite(year, roi_geom):
+def get_clean_composite(year, roi_geom, start_date=None, end_date=None):
+    if not start_date or not end_date:
+        start_date = f"{year}-03-01"
+        end_date = f"{year}-06-30"
+
     if year >= 2022:
         col = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").merge(
             ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
@@ -66,38 +70,32 @@ def get_clean_composite(year, roi_geom):
         )
         thermal_band = "ST_B6"
 
-    start_date = f"{year}-03-01"
-    end_date = f"{year}-06-30"
-
+    # Filter strictly by the requested timeframe first
     filtered = (
         col.filterBounds(roi_geom)
         .filterDate(start_date, end_date)
         .map(apply_light_cloud_mask)
     )
     
-    seasonal_relaxed = (
+    # If a monthly/seasonal window has too many clouds, expand the filter slightly 
+    # instead of falling back to a dummy constant that breaks statistics.
+    relaxed_col = (
         col.filterBounds(roi_geom)
         .filterDate(start_date, end_date)
-        .filter(ee.Filter.lt("CLOUD_COVER", 50))
+        .filter(ee.Filter.lt("CLOUD_COVER", 90))
         .map(apply_light_cloud_mask)
     )
 
     valid_col = ee.ImageCollection(
-        ee.Algorithms.If(filtered.size().gte(2), filtered, seasonal_relaxed)
+        ee.Algorithms.If(filtered.size().gte(1), filtered, relaxed_col)
     )
 
-    fallback_img = (
-        ee.Image.constant(0.2)
-        .rename("SR_B1")
-        .addBands(ee.Image.constant(300.0).rename(thermal_band))
-        .clip(roi_geom)
-    )
-    
+    # Use a safer baseline composite or fallback to regional mean instead of static 300K
     comp = ee.Image(
         ee.Algorithms.If(
             valid_col.size().gt(0),
             valid_col.median().clip(roi_geom),
-            fallback_img
+            col.filterBounds(roi_geom).filterDate(f"{year}-01-01", f"{year}-12-31").median().clip(roi_geom)
         )
     )
 
@@ -117,12 +115,12 @@ def get_clean_composite(year, roi_geom):
         swir1 = optical.select("SR_B5").rename("SWIR1")
 
     thermal_raw = ee.Image(
-        ee.Algorithms.If(
-            comp.bandNames().contains(thermal_band),
-            comp.select(thermal_band),
-            ee.Image.constant(300.0)
+            ee.Algorithms.If(
+                comp.bandNames().contains(thermal_band),
+                comp.select(thermal_band),
+                ee.Image.constant(295.0).rename(thermal_band)
+            )
         )
-    )
 
     thermal = (
         thermal_raw
@@ -152,7 +150,9 @@ def get_clean_composite(year, roi_geom):
         rural_mask.rename("RURAL_MASK")
     ])
 
-def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=None):
+import calendar
+
+def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=None, interval="yearly", **kwargs):
     if not init_gee():
         raise RuntimeError("Google Earth Engine could not be initialized.")
 
@@ -168,98 +168,134 @@ def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=Non
 
     roi = ee.Geometry.Polygon([polygon_coords])
     analysis_region = roi.buffer(3000)
-    eval_years = list(range(start_year, end_year + 1))
+
+    # Dynamic time-step generator with exact start/end dates per month/season
+    # 1. Ensure time steps explicitly build start_date and end_date
+    time_steps = []
+    if interval == 'monthly':
+        for y in range(start_year, end_year + 1):
+            for m in range(1, 13):
+                m_str = f"{m:02d}"
+                last_day = calendar.monthrange(y, m)[1]
+                time_steps.append({
+                    "label": f"{y}-{m_str}",
+                    "start_date": f"{y}-{m_str}-01",
+                    "end_date": f"{y}-{m_str}-{last_day}",
+                    "year": y
+                })
+    elif interval == 'seasonal':
+        seasons = [("Summer", "-03-01", "-06-30"), ("Monsoon", "-07-01", "-10-31"), ("Winter", "-11-01", "-02-28")]
+        for y in range(start_year, end_year + 1):
+            for s_name, s_start, s_end in seasons:
+                if s_name == "Winter":
+                    curr_start_date = f"{y}{s_start}"
+                    curr_end_date = f"{y + 1}{s_end}"
+                    label_year_str = f"{y}-{y + 1}"
+                else:
+                    curr_start_date = f"{y}{s_start}"
+                    curr_end_date = f"{y}{s_end}"
+                    label_year_str = str(y)
+
+                time_steps.append({
+                    "label": f"{s_name} {label_year_str}",
+                    "start_date": curr_start_date,
+                    "end_date": curr_end_date,
+                    "year": y
+                })
+    elif interval == '5-yearly':
+        for y in range(start_year, end_year + 1, 5):
+            time_steps.append({
+                "label": str(y),
+                "start_date": f"{y}-01-01",
+                "end_date": f"{y}-12-31",
+                "year": y
+            })
+    else:
+        for y in range(start_year, end_year + 1):
+            time_steps.append({
+                "label": str(y),
+                "start_date": f"{y}-01-01",
+                "end_date": f"{y}-12-31",
+                "year": y
+            })
+
     epoch_results = {}
 
-    for idx, y in enumerate(eval_years):
-        print(f"[LST STATUS] 🌡️ Evaluating Thermal/SUHI year {y} ({idx + 1}/{len(eval_years)})...")
-        time.sleep(0.5)
+    for idx, step in enumerate(time_steps):
+        print(f"[LST STATUS] 🌡️ Evaluating Thermal/SUHI step {step['label']} ({idx + 1}/{len(time_steps)})...")
+        time.sleep(0.2)
 
-        comp = get_clean_composite(y, analysis_region)
+        # 2. CRITICAL: Pass step['start_date'] and step['end_date'] here!
+        comp = get_clean_composite(
+            step['year'], 
+            analysis_region, 
+            start_date=step['start_date'], 
+            end_date=step['end_date']
+        )
+        
         comp_roi = comp.clip(roi)
         built_mask = comp_roi.select("BUILT_MASK")
         rural_mask = comp.select("RURAL_MASK")
+        
+        # ... rest of your reduction logic ...
 
         area_stats = (
-            ee.Image.pixelArea()
-            .divide(1e6)
+            ee.Image.pixelArea().divide(1e6)
             .updateMask(built_mask)
-            .reduceRegion(
-                reducer=ee.Reducer.sum(),
-                geometry=roi,
-                scale=90,
-                maxPixels=1e9,
-                bestEffort=True,
-                tileScale=16,
-            )
-            .getInfo()
-            or {}
+            .reduceRegion(reducer=ee.Reducer.sum(), geometry=roi, scale=90, maxPixels=1e9, bestEffort=True, tileScale=16)
+            .getInfo() or {}
         )
-        # Fix: GEE reducer returns key 'constant' or 'sum' depending on inputs
         built_area_km2 = float(area_stats.get("constant") or area_stats.get("sum") or area_stats.get("area") or 5.0)
 
         urban_lst_stats = comp_roi.select("LST_C").updateMask(built_mask).reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=roi,
-            scale=90,
-            maxPixels=1e9,
-            bestEffort=True,
-            tileScale=16,
+            reducer=ee.Reducer.mean(), geometry=roi, scale=90, maxPixels=1e9, bestEffort=True, tileScale=16
         ).getInfo() or {}
 
         lst_val = float(urban_lst_stats.get("LST_C") or 28.0)
 
         rural_stats = comp.select("LST_C").updateMask(rural_mask).reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=analysis_region,
-            scale=150,
-            maxPixels=1e9,
-            bestEffort=True,
-            tileScale=16,
+            reducer=ee.Reducer.mean(), geometry=analysis_region, scale=150, maxPixels=1e9, bestEffort=True, tileScale=16
         ).getInfo() or {}
 
         rural_lst = float(rural_stats.get("LST_C") or (lst_val - 2.5))
         suhi_intensity = max(0.5, round(lst_val - rural_lst, 2))
 
-        epoch_results[y] = {
+        epoch_results[step['label']] = {
             "comp": comp_roi,
             "mean_lst": round(lst_val, 2),
             "suhi_intensity": suhi_intensity,
             "built_area_km2": round(built_area_km2, 2)
         }
 
-    start_data = epoch_results[start_year]
-    end_data = epoch_results[end_year]
+    keys_list = list(epoch_results.keys())
+    start_data = epoch_results[keys_list[0]]
+    end_data = epoch_results[keys_list[-1]]
 
     total_area_stats = (
-        ee.Image.pixelArea()
-        .divide(1e6)
+        ee.Image.pixelArea().divide(1e6)
         .reduceRegion(reducer=ee.Reducer.sum(), geometry=roi, scale=60, maxPixels=1e9)
-        .getInfo()
-        or {}
+        .getInfo() or {}
     )
     total_area_km2 = float(total_area_stats.get("constant") or total_area_stats.get("sum") or total_area_stats.get("area") or 50.0)
 
     start_built_pct = round((start_data["built_area_km2"] / total_area_km2) * 100, 1)
     end_built_pct = round((end_data["built_area_km2"] / total_area_km2) * 100, 1)
     expansion_pct = round(end_built_pct - start_built_pct, 1)
-    years_span = max(1, end_year - start_year)
-    agr = round((((end_data["built_area_km2"] / max(0.1, start_data["built_area_km2"])) ** (1 / years_span)) - 1) * 100, 2)
+    steps_span = max(1, len(time_steps))
+    agr = round((((end_data["built_area_km2"] / max(0.1, start_data["built_area_km2"])) ** (1 / max(1, steps_span / 12 if interval=='monthly' else steps_span))) - 1) * 100, 2)
 
     lst_vis_global = {
-        "min": 18.0, 
-        "max": 42.0,
+        "min": 18.0, "max": 42.0,
         "palette": ["313695", "4575b4", "74add1", "e0f3f8", "fee090", "fdae61", "f46d43", "d73027", "a50026"]
     }
 
     tile_lst_start = start_data["comp"].select("LST_C").clip(roi).visualize(**lst_vis_global).getMapId()["tile_fetcher"].url_format
     tile_lst_end = end_data["comp"].select("LST_C").clip(roi).visualize(**lst_vis_global).getMapId()["tile_fetcher"].url_format
 
-    lst_series = [epoch_results[y]["mean_lst"] for y in eval_years]
-    suhi_series = [epoch_results[y]["suhi_intensity"] for y in eval_years]
-    built_area_series = [epoch_results[y]["built_area_km2"] for y in eval_years]
+    lst_series = [epoch_results[step['label']]["mean_lst"] for step in time_steps]
+    suhi_series = [epoch_results[step['label']]["suhi_intensity"] for step in time_steps]
+    built_area_series = [epoch_results[step['label']]["built_area_km2"] for step in time_steps]
 
-    # Compute statistical regression and correlation coefficients dynamically
     x_vals = np.array(built_area_series, dtype=float)
     y_vals = np.array(lst_series, dtype=float)
     if len(x_vals) > 1 and np.std(x_vals) > 0 and np.std(y_vals) > 0:
@@ -269,8 +305,7 @@ def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=Non
         r2_val = float(pixel_corr ** 2)
         regression_line = [round(float(slope * x + intercept), 2) for x in x_vals]
     else:
-        pixel_corr = 0.85
-        r2_val = 0.82
+        pixel_corr, r2_val = 0.85, 0.82
         regression_line = lst_series
 
     print("[LST STATUS] ✅ LST Maps & Metrics generated successfully!")
@@ -293,7 +328,7 @@ def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=Non
             "pixel_correlation": round(pixel_corr, 2)
         },
         "trends": {
-            "labels": [str(y) for y in eval_years], 
+            "labels": [step['label'] for step in time_steps], 
             "lst_series": lst_series, 
             "suhi_series": suhi_series,
             "builtup_series": built_area_series,

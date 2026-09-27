@@ -120,7 +120,6 @@ function centerRoiPickerOnSelectedRegion() {
     }
 }
 
-// Function to generate a bounding box around (longitude, latitude)
 function updateRoiFromCoordinates() {
     const lonInput = document.getElementById('coord-x');
     const latInput = document.getElementById('coord-y');
@@ -132,19 +131,16 @@ function updateRoiFromCoordinates() {
 
     if (isNaN(lon) || isNaN(lat)) return;
 
-    // Center map view on entered point
     if (mapRoiPicker) {
         mapRoiPicker.setView([lat, lon], 12);
     }
 
-    // Generate ~10 km x 10 km bounding box around (lon, lat)
-    const delta = 0.05; // ~5.5 km buffer
+    const delta = 0.05;
     const west = parseFloat((lon - delta).toFixed(4));
     const east = parseFloat((lon + delta).toFixed(4));
     const south = parseFloat((lat - delta).toFixed(4));
     const north = parseFloat((lat + delta).toFixed(4));
 
-    // GeoJSON/GEE order: [Longitude, Latitude]
     currentRoiPolygon = [
         [west, south],
         [east, south],
@@ -156,7 +152,6 @@ function updateRoiFromCoordinates() {
     updateBufferedBoundsFromPolygon(currentRoiPolygon);
     checkAoiAreaWarning(currentRoiPolygon);
 
-    // Render bounding box on selector map
     if (drawnItems) {
         drawnItems.clearLayers();
         const rectLayer = L.rectangle([[south, west], [north, east]], {
@@ -169,38 +164,27 @@ function updateRoiFromCoordinates() {
     }
 }
 
-// Fixed setRoiMode that properly generates geometry for coordinate mode
 function setRoiMode(mode) {
-
     currentMode = mode;
 
     if (mode !== 'draw' && drawnItems) {
-
         drawnItems.clearLayers();
-
         currentRoiPolygon = null;
-
     }
 
     ['region', 'coordinates', 'draw'].forEach(m => {
-
         document.getElementById(`btn-mode-${m}`)?.classList.toggle('active-roi-tab', m === mode);
-
         document.getElementById(`panel-${m}`)?.classList.toggle('hidden', m !== mode);
-
     });
-
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initialize Icons and UI Components
     if (window.lucide) lucide.createIcons();
     initRoiPickerMap();
     initOutputMaps();
     initAnalyticsCharts();
     initCitySearchBar();
 
-    // 2. Enforce Default Time-Series Chart View & Wire Tab Listeners
     if (typeof switchChartTab === 'function') {
         switchChartTab('trend');
     }
@@ -211,21 +195,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('tab-trend')?.addEventListener('click', () => switchChartTab('trend'));
     document.getElementById('tab-scatter')?.addEventListener('click', () => switchChartTab('scatter'));
 
-    // 3. Open Sidebar if handler exists
     if (typeof openSidebar === 'function') {
         openSidebar();
     }
 
-    // 4. Region Dropdown Change Listener
     document.getElementById('select-region')?.addEventListener('change', () => {
         if (typeof centerRoiPickerOnSelectedRegion === 'function') {
             centerRoiPickerOnSelectedRegion();
         }
     });
 
-    // 5. Global Click Handler for Outside Clicks (Sidebar & Autocomplete Dismissal)
     document.addEventListener('click', (e) => {
-        // Dismiss Sidebar on outside click (mobile/overlay mode)
         const sidebar = document.getElementById('main-sidebar');
         const toggleBtn = document.getElementById('sidebar-toggle-btn');
         const sidebarOpen = (typeof isSidebarOpen !== 'undefined') ? isSidebarOpen : false;
@@ -236,7 +216,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Dismiss City Search Suggestions Dropdown on outside click
         const searchInput = document.getElementById('city-search-input');
         const suggestionsBox = document.getElementById('search-suggestions');
 
@@ -269,7 +248,6 @@ function closeSidebar() {
     backdrop?.classList.add('opacity-0', 'pointer-events-none');
 }
 
-// 1. Initial Map Viewport Set to Countrywide India
 function initRoiPickerMap() {
     const indiaCenterCoords = [20.5937, 78.9629];
     const baseTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -321,7 +299,6 @@ function initRoiPickerMap() {
             }
             updateBufferedBoundsFromPolygon(currentRoiPolygon);
 
-            // Evaluate if drawn polygon exceeds 10 x 10 km² (100 km²)
             if (typeof checkAoiAreaWarning === 'function') {
                 checkAoiAreaWarning(currentRoiPolygon);
             }
@@ -333,7 +310,6 @@ function initRoiPickerMap() {
 
     mapRoiPicker.on(L.Draw.Event.DELETED, function () {
         currentRoiPolygon = null;
-        // Hide large AOI warning when drawn layers are cleared
         if (typeof checkAoiAreaWarning === 'function') {
             checkAoiAreaWarning(null);
         }
@@ -342,7 +318,6 @@ function initRoiPickerMap() {
     setTimeout(() => mapRoiPicker.invalidateSize(), 250);
 }
 
-// 2. Ranked City Search Implementation
 function initCitySearchBar() {
     const searchInput = document.getElementById('city-search-input');
     const clearBtn = document.getElementById('clear-search-btn');
@@ -362,7 +337,6 @@ function initCitySearchBar() {
 
         if (query.length < 2) return;
 
-        // 1. Prioritize matches from Curated Major Cities Catalog
         const qLower = query.toLowerCase();
         const localMatches = Object.keys(MAJOR_INDIAN_CITIES)
             .filter(cityName => cityName.toLowerCase().includes(qLower))
@@ -385,7 +359,6 @@ function initCitySearchBar() {
             renderFormattedSuggestions(localMatches);
         }
 
-        // 2. Fetch wider administrative entities from Nominatim
         searchDebounceTimer = setTimeout(async () => {
             try {
                 const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=in&q=${encodeURIComponent(query)}&limit=40`;
@@ -413,7 +386,6 @@ function processAndRenderResults(results, localMatches = [], query = '') {
             const placeClass = item.class || '';
             const placeType = item.type || '';
 
-            // Exclude non-settlement POIs, buildings, and streets
             const isInvalid = ['building', 'amenity', 'shop', 'highway', 'tourism', 'leisure', 'apartments', 'residential'].includes(placeClass) ||
                               ['hotel', 'apartments', 'house', 'commercial', 'guest_house', 'parking'].includes(placeType);
 
@@ -426,8 +398,7 @@ function processAndRenderResults(results, localMatches = [], query = '') {
             const cleanDisplayName = stateName ? `${cityName}, ${stateName}` : cityName;
             if (seenNames.has(cleanDisplayName.toLowerCase())) return;
 
-            // Assign hierarchy rank for sorting
-            let rank = 4; // Default: town/village
+            let rank = 4;
             let regionType = 'Town';
 
             if (addr.city || placeType === 'city') {
@@ -441,7 +412,6 @@ function processAndRenderResults(results, localMatches = [], query = '') {
                 regionType = 'Village';
             }
 
-            // Boost rank if name starts with query
             if (cityName.toLowerCase().startsWith(qLower)) {
                 rank -= 0.5;
             }
@@ -457,7 +427,6 @@ function processAndRenderResults(results, localMatches = [], query = '') {
         });
     }
 
-    // Sort: Rank 1 (Major Cities) -> Rank 2 (Cities) -> Rank 3 (Districts) -> Rank 4 (Towns) -> Rank 5 (Rural)
     apiMatches.sort((a, b) => a.rank - b.rank);
     const combinedResults = [...localMatches, ...apiMatches];
 
@@ -579,7 +548,6 @@ function updateMapOpacity(mapKey, value) {
     });
 }
 
-
 function resetToRoiPicker() {
     document.getElementById('analysis-results-section')?.classList.add('hidden');
     document.getElementById('roi-definition-section')?.classList.remove('hidden');
@@ -596,7 +564,7 @@ function updateAnalysisProgress(percent, statusMessage) {
     if (progressPercent) progressPercent.innerText = `${percent}%`;
     if (statusText) statusText.innerText = statusMessage;
 }
-// Function to update progress strictly after a step finishes
+
 function completeStep(currentStep, totalSteps, statusMessage) {
     const progressBar = document.getElementById('loading-progress-bar');
     const progressPercent = document.getElementById('loading-progress-percent');
@@ -609,20 +577,61 @@ function completeStep(currentStep, totalSteps, statusMessage) {
     if (statusText) statusText.innerText = `[Step ${currentStep}/${totalSteps}] ${statusMessage}`;
 }
 
+function calculateEstimatedTimeAndFrames(startYear, endYear, interval, polygonCoords) {
+    const totalYears = (endYear - startYear) + 1;
+    let totalFrames = totalYears;
+
+    if (interval === 'monthly') totalFrames = totalYears * 12;
+    else if (interval === 'seasonal') totalFrames = totalYears * 4;
+    else if (interval === '5year') totalFrames = Math.ceil(totalYears / 5);
+
+    const areaKm2 = Math.round(calculatePolygonAreaKm2(polygonCoords) || 100);
+    const estimatedSeconds = Math.max(3, Math.round(totalFrames * (areaKm2 / 100) * 0.8));
+
+    return {
+        totalFrames,
+        areaKm2,
+        timeMessage: `Estimated time: ~${estimatedSeconds} seconds for ${totalFrames} frames across ~${areaKm2} km² scene dimensions.`
+    };
+}
+
 async function executeFullAnalysis() {
     const startYear = parseInt(document.getElementById('start-year')?.value || 2000, 10);
     const endYear = parseInt(document.getElementById('end-year')?.value || 2025, 10);
     const regionName = document.getElementById('select-region')?.value || 'Agra';
     const xCoord = parseFloat(document.getElementById('coord-x')?.value || 78.0081);
     const yCoord = parseFloat(document.getElementById('coord-y')?.value || 27.1767);
+    
+    // Read interval dynamically from dropdown or checkbox fallback
+    const interval = document.getElementById('analysis-interval')?.value || 
+                     (document.getElementById('monthly-checkbox')?.checked ? 'monthly' : 'yearly');
+                     
+    const wantLulc = document.getElementById('chk-lulc')?.checked ?? true;
+    const wantLst = document.getElementById('chk-lst')?.checked ?? true;
+    const wantSuhi = document.getElementById('chk-suhi')?.checked ?? true;
+    const wantGraphs = document.getElementById('chk-graphs')?.checked ?? true;
+
+    const estimation = calculateEstimatedTimeAndFrames(startYear, endYear, interval, currentRoiPolygon);
+    console.log(estimation.timeMessage);
+
+    const payload = {
+        roi_mode: currentMode,
+        start_year: startYear,
+        end_year: endYear,
+        interval: interval,
+        components: { lulc: wantLulc, lst: wantLst, suhi: wantSuhi, graphs: wantGraphs },
+        region_name: regionName,
+        x: xCoord,
+        y: yCoord,
+        polygon_coords: currentRoiPolygon
+    };
 
     if (startYear > endYear) {
         alert(`Start year (${startYear}) cannot be greater than End year (${endYear}).`);
         return;
     }
 
-    // Define distinct sequential steps
-   const steps = [
+    const steps = [
         { msg: "Initializing Region of Interest (ROI) and geometry boundaries...", action: async () => {
             if (currentMode === 'region') {
                 centerRoiPickerOnSelectedRegion();
@@ -660,18 +669,7 @@ async function executeFullAnalysis() {
             await new Promise(r => setTimeout(r, 250));
         }},
         { msg: "Executing backend analysis query on Google Earth Engine...", action: async () => {
-            const payload = {
-                roi_mode: currentMode,
-                start_year: startYear,
-                end_year: endYear,
-                region_name: regionName,
-                x: xCoord,
-                y: yCoord,
-                polygon_coords: currentRoiPolygon
-            };
-
-            // Use a smooth micro-ticker during the GEE fetch phase so it glides smoothly 
-            // instead of freezing, perfectly matching the terminal execution flow.
+            // FIXED: Using the properly configured payload with interval and components
             const fetchPromise = fetch('/api/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -711,7 +709,6 @@ async function executeFullAnalysis() {
             }
         }}
     ];
-    
 
     const totalSteps = steps.length;
     let currentStep = 0;
@@ -727,21 +724,13 @@ async function executeFullAnalysis() {
     }
 
     try {
-        // Execute each step one by one, updating progress ONLY AFTER completion
         for (let i = 0; i < steps.length; i++) {
             currentStep = i + 1;
-            
-            // Run the step task
             await steps[i].action();
-
-            // Update percentage and text strictly AFTER the step finishes
             completeStep(currentStep, totalSteps, steps[i].msg);
-            
-            // Brief pause so the user can visually register the completion of each step
             await new Promise(r => setTimeout(r, 200));
         }
 
-        // Hide overlay after a brief final delay
         setTimeout(() => {
             loadingOverlay?.classList.add('hidden');
             loadingOverlay?.classList.remove('flex');
@@ -761,13 +750,11 @@ async function executeFullAnalysis() {
     }
 }
 
-
 function updateDashboardMetrics(data) {
     if (!data || !data.statistics) return;
 
     const stats = data.statistics;
 
-    // 1. Update Spatio-Temporal Metrics Panel (Mapped to match backend keys)
     const areaStartEl = document.getElementById('stat-area-start');
     const areaEndEl = document.getElementById('stat-area-end');
     const agrEl = document.getElementById('stat-agr');
@@ -789,7 +776,6 @@ function updateDashboardMetrics(data) {
     if (regR2El) regR2El.innerText = `${regR2}`;
     if (corrREl) corrREl.innerText = `${pixelCorr}`;
 
-    // 2. Synchronize Time-Series Chart (Consecutive Annual Trends)
     if (trendChartInstance && data.trends) {
         trendChartInstance.data.labels = data.trends.labels || [];
         trendChartInstance.data.datasets[0].data = data.trends.suhi_series || [];
@@ -797,9 +783,6 @@ function updateDashboardMetrics(data) {
         trendChartInstance.update();
     }
 
-    // 3. Synchronize Scatter & Linear Regression Fit
-// 3. Synchronize Scatter & Linear Regression Fit
-// 3. Synchronize Scatter & Linear Regression Fit
     if (scatterChartInstance && data.trends) {
         const builtAreas = data.trends.built_area_km2 || data.trends.builtup_series || [];
         const suhiSeries = data.trends.suhi_series || [];
@@ -832,14 +815,12 @@ function updateDashboardMetrics(data) {
         }
         scatterChartInstance.data.datasets[1].data = linePoints;
 
-        // FORCE dynamic scaling bounds based on actual data values
         if (builtAreas.length > 0 && suhiSeries.length > 0) {
             const minX = Math.min(...builtAreas);
             const maxX = Math.max(...builtAreas);
             const minY = Math.min(...suhiSeries);
             const maxY = Math.max(...suhiSeries);
 
-            // Add a small 5% padding so points don't touch the graph borders
             const xPad = (maxX - minX) * 0.05 || 10;
             const yPad = (maxY - minY) * 0.05 || 0.5;
 
@@ -928,7 +909,6 @@ function switchChartTab(tab) {
         tabTrend.classList.remove('bg-teal-600', 'text-white');
         tabTrend.classList.add('bg-slate-800', 'text-slate-300');
 
-        // Give the DOM a tiny moment to unhide the canvas before resizing/updating Chart.js
         setTimeout(() => {
             if (window.scatterChartInstance) {
                 window.scatterChartInstance.resize();
@@ -939,10 +919,8 @@ function switchChartTab(tab) {
 }
 
 function initAnalyticsCharts() {
-    // 1. Time-Series Trend Chart (Dynamic annual progression)
     const ctxTrend = document.getElementById('suhiTrendChart')?.getContext('2d');
     if (ctxTrend) {
-        // Destroy prior instance if re-initializing to avoid duplicate renders
         if (window.trendChartInstance) {
             window.trendChartInstance.destroy();
         }
@@ -950,7 +928,7 @@ function initAnalyticsCharts() {
         window.trendChartInstance = new Chart(ctxTrend, {
             type: 'line',
             data: {
-                labels: [], // Populated dynamically by updateCharts(data.trends.labels)
+                labels: [],
                 datasets: [
                     {
                         label: 'SUHI Intensity (°C)',
@@ -993,7 +971,7 @@ function initAnalyticsCharts() {
                             font: { size: 10 },
                             autoSkip: true,
                             maxRotation: 0,
-                            maxTicksLimit: 12 // Prevents crowded labels on large date ranges
+                            maxTicksLimit: 12
                         }
                     },
                     y: {
@@ -1032,7 +1010,7 @@ function initAnalyticsCharts() {
             }
         });
     }
-    // 2. Scatter & Regression Chart (Configured as a linear line chart to safely mix scatter points and lines)
+
     const ctxScatter = document.getElementById('suhiScatterChart')?.getContext('2d');
     if (ctxScatter) {
         if (window.scatterChartInstance) {
@@ -1040,13 +1018,13 @@ function initAnalyticsCharts() {
         }
 
         window.scatterChartInstance = new Chart(ctxScatter, {
-            type: 'line', // Using 'line' base type avoids mixed-controller scaling bugs in Chart.js
+            type: 'line',
             data: {
                 datasets: [
                     {
-                        label: 'Annual Epoch Observations',
+                        label: 'Observations',
                         data: [],
-                        type: 'scatter', // Explicitly declare dataset 1 as scatter points
+                        type: 'scatter',
                         backgroundColor: '#38bdf8',
                         pointRadius: 5,
                         pointHoverRadius: 7
@@ -1054,7 +1032,7 @@ function initAnalyticsCharts() {
                     {
                         label: 'Linear Regression Trend',
                         data: [],
-                        type: 'line', // Dataset 2 is the continuous trend line
+                        type: 'line',
                         borderColor: '#f43f5e',
                         borderWidth: 2,
                         fill: false,
@@ -1067,7 +1045,7 @@ function initAnalyticsCharts() {
                 maintainAspectRatio: false,
                 scales: {
                     x: {
-                        type: 'linear', // Force linear scale for coordinate mapping
+                        type: 'linear',
                         position: 'bottom',
                         title: {
                             display: true,
@@ -1106,9 +1084,14 @@ function initAnalyticsCharts() {
 function downloadPDFReport() {
     const element = document.getElementById('printable-report');
     if (!element) return;
+
+    const cityName = document.getElementById('select-region')?.value || 'Custom_ROI';
+    const interval = document.getElementById('analysis-interval')?.value || 'yearly';
+    const downloadDate = new Date().toISOString().slice(0, 10);
+
     const opt = {
         margin: 0.3,
-        filename: `SUHI_Spatial_Growth_Report_${new Date().toISOString().slice(0,10)}.pdf`,
+        filename: `SUHI_Report_${cityName}_${interval}_${downloadDate}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, backgroundColor: '#020617' },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' }
@@ -1116,7 +1099,6 @@ function downloadPDFReport() {
     html2pdf().set(opt).from(element).save();
 }
 
-// Bulletproof Area Calculation
 function calculatePolygonAreaKm2(coords) {
     if (!coords || !Array.isArray(coords) || coords.length < 3) return 0;
 
@@ -1128,7 +1110,6 @@ function calculatePolygonAreaKm2(coords) {
     const n = ring.length;
     if (n < 3) return 0;
 
-    // Estimate latitude to project meters accurately
     const meanLat = ring.reduce((acc, pt) => acc + (parseFloat(pt[1]) || 0), 0) / n;
     const latMeters = 111132.954;
     const lonMeters = 111412.84 * Math.cos(meanLat * (Math.PI / 180));
@@ -1142,24 +1123,17 @@ function calculatePolygonAreaKm2(coords) {
         area += (x1 * y2 - x2 * y1);
     }
 
-    return Math.abs(area / 2.0) / 1e6; // Convert m² to km²
+    return Math.abs(area / 2.0) / 1e6;
 }
 
-// Show/Hide Warning Banner
 function checkAoiAreaWarning(coords) {
     const banner = document.getElementById('aoi-warning-banner');
     const areaVal = document.getElementById('aoi-area-val');
-    if (!banner) {
-        console.error("Could not find element #aoi-warning-banner in the DOM.");
-        return;
-    }
+    if (!banner) return;
 
     const areaKm2 = calculatePolygonAreaKm2(coords);
-    console.log(`[AOI Check] Calculated Area: ${Math.round(areaKm2)} km²`);
-
     if (areaVal) areaVal.textContent = Math.round(areaKm2);
 
-    // 10 km x 10 km = 100 km² threshold
     if (areaKm2 > 100) {
         banner.style.display = 'flex';
         if (window.lucide) lucide.createIcons();
@@ -1171,20 +1145,15 @@ function checkAoiAreaWarning(coords) {
 let activeFullscreenCardId = null;
 let activeFullscreenMapInstance = null;
 
-/**
- * Toggles a map container into full-screen view and recalculates leaflet tile dimensions.
- */
 function toggleMapFullscreen(cardId, mapInstance) {
     const card = document.getElementById(cardId);
     if (!card) return;
 
-    // If already in fullscreen, exit
     if (activeFullscreenCardId === cardId) {
         exitMapFullscreen();
         return;
     }
 
-    // Clean up if another card was already fullscreen
     if (activeFullscreenCardId) {
         exitMapFullscreen();
     }
@@ -1193,9 +1162,8 @@ function toggleMapFullscreen(cardId, mapInstance) {
     activeFullscreenMapInstance = mapInstance;
 
     card.classList.add('map-card-fullscreen');
-    document.body.style.overflow = 'hidden'; // Prevent page scrolling while in fullscreen
+    document.body.style.overflow = 'hidden';
 
-    // Crucial for Leaflet: forces re-rendering to the new expanded container width & height
     setTimeout(() => {
         if (mapInstance) {
             mapInstance.invalidateSize();
@@ -1204,9 +1172,6 @@ function toggleMapFullscreen(cardId, mapInstance) {
     }, 150);
 }
 
-/**
- * Reverts the map back to its grid location and refits Leaflet viewport.
- */
 function exitMapFullscreen() {
     if (!activeFullscreenCardId) return;
 
@@ -1215,13 +1180,12 @@ function exitMapFullscreen() {
         card.classList.remove('map-card-fullscreen');
     }
 
-    document.body.style.overflow = ''; // Restore page scrolling
+    document.body.style.overflow = '';
 
     const mapInstance = activeFullscreenMapInstance;
     activeFullscreenCardId = null;
     activeFullscreenMapInstance = null;
 
-    // Recalculate leaflet tile layout back to original grid size
     setTimeout(() => {
         if (mapInstance) {
             mapInstance.invalidateSize();
@@ -1229,7 +1193,6 @@ function exitMapFullscreen() {
     }, 150);
 }
 
-// Global Keyboard Listener: Esc Key Exits Fullscreen
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' || e.key === 'Esc') {
         if (activeFullscreenCardId) {
@@ -1239,7 +1202,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 function updateAnalyticsCharts(result) {
-    // Resolve payload wrapping whether Flask sends result or result.data
     const payload = result.data ? result.data : result;
     const trends = payload.trends;
     const stats = payload.statistics || payload.stats;
@@ -1249,24 +1211,19 @@ function updateAnalyticsCharts(result) {
         return;
     }
 
-    // 1. Update Time-Series Trend Line Chart
     if (window.trendChartInstance) {
         window.trendChartInstance.data.labels = trends.labels;
-        // Dataset 0: SUHI Intensity (°C)
         window.trendChartInstance.data.datasets[0].data = trends.suhi_series;
-        // Dataset 1: Built-up Area (km²)
         window.trendChartInstance.data.datasets[1].data = trends.built_area_km2;
 
         window.trendChartInstance.resize();
         window.trendChartInstance.update();
     }
 
-    // 2. Update Scatter & Regression Chart
     if (window.scatterChartInstance && trends.built_area_km2 && trends.suhi_series) {
         const builtSeries = trends.built_area_km2;
         const suhiSeries = trends.suhi_series;
 
-        // Map observations to {x, y}
         const scatterPoints = builtSeries.map((area, idx) => ({
             x: Number(area),
             y: Number(suhiSeries[idx])
@@ -1274,14 +1231,12 @@ function updateAnalyticsCharts(result) {
 
         let regressionPoints = [];
 
-        // Check if backend already sent a pre-calculated regression line
         if (trends.regression_line && trends.regression_line.length === builtSeries.length) {
             regressionPoints = builtSeries.map((xVal, idx) => ({
                 x: Number(xVal),
                 y: Number(trends.regression_line[idx])
             }));
         } else {
-            // Fallback: Compute min/max endpoints or use stats if available
             const minX = Math.min(...builtSeries);
             const maxX = Math.max(...builtSeries);
             const slope = Number(stats?.slope || 0.05);
@@ -1296,7 +1251,6 @@ function updateAnalyticsCharts(result) {
         window.scatterChartInstance.data.datasets[0].data = scatterPoints;
         window.scatterChartInstance.data.datasets[1].data = regressionPoints;
 
-        // Optional: Dynamically adjust scale boundaries so points don't clip
         const minX = Math.min(...builtSeries);
         const maxX = Math.max(...builtSeries);
         const minY = Math.min(...suhiSeries);
@@ -1311,24 +1265,18 @@ function updateAnalyticsCharts(result) {
 
         window.scatterChartInstance.resize();
         window.scatterChartInstance.update();
-        console.log("[Chart Success] Scatter and regression graphs updated successfully.");
     }
 }
 
-/**
- * Calculates bounds from ROI polygon and adds a ~10 km buffer (approx 0.09 degrees).
- */
 function updateBufferedBoundsFromPolygon(coords) {
     if (!coords || coords.length === 0) {
         window.roiBufferedBounds = null;
         return;
     }
-    // Convert GeoJSON [lon, lat] to Leaflet [lat, lon]
     const latLngs = coords.map(c => [c[1], c[0]]);
     const poly = L.polygon(latLngs);
     const bounds = poly.getBounds();
     
-    // 10 km buffer in degrees (approx 0.09°)
     const bufferDeg = 0.09; 
     const southWest = bounds.getSouthWest();
     const northEast = bounds.getNorthEast();
@@ -1339,12 +1287,6 @@ function updateBufferedBoundsFromPolygon(coords) {
     );
 }
 
-/**
- * Captures and downloads strictly the map container view fitted to the ROI + buffer.
- * @param {string} mapDivId - The DOM ID of the Leaflet map container (e.g., 'map-built-start').
- * @param {string} filenamePrefix - Prefix for the downloaded image filename.
- * @param {object} mapInstance - The Leaflet map instance.
- */
 function downloadMapCard(mapDivId, filenamePrefix, mapInstance) {
     const mapElement = document.getElementById(mapDivId);
     if (!mapElement) return;
@@ -1354,29 +1296,28 @@ function downloadMapCard(mapDivId, filenamePrefix, mapInstance) {
         return;
     }
 
-    // 1. Validate and apply the stored ROI + buffer bounds
+    const cityName = document.getElementById('select-region')?.value || 'Custom_ROI';
+    const interval = document.getElementById('analysis-interval')?.value || 'yearly';
+    const downloadDate = new Date().toISOString().slice(0, 10);
+
     if (window.roiBufferedBounds) {
         mapInstance.fitBounds(window.roiBufferedBounds, { animate: false });
-    } else if (window.roiLayer && typeof window.roiLayer.getBounds === 'function') {
-        mapInstance.fitBounds(window.roiLayer.getBounds().pad(0.15), { animate: false });
     } else {
-        alert("Please define your study region in Step 1 before downloading maps.");
+        alert("Please define your study region first.");
         return;
     }
 
-    // 2. Force Leaflet to re-calculate layout and load tiles for the exact ROI box
     mapInstance.invalidateSize();
 
-    // 3. Wait slightly for tiles to paint, then execute html2canvas snapshot
     setTimeout(() => {
         html2canvas(mapElement, {
             useCORS: true,
             allowTaint: true,
             backgroundColor: '#0f172a',
-            scale: 2 // Crisp high-resolution export
+            scale: 2
         }).then(canvas => {
             const link = document.createElement('a');
-            link.download = `${filenamePrefix}_ROI_${new Date().toISOString().slice(0, 10)}.png`;
+            link.download = `${filenamePrefix}_${cityName}_${interval}_${downloadDate}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
         }).catch(err => {
@@ -1386,11 +1327,6 @@ function downloadMapCard(mapDivId, filenamePrefix, mapInstance) {
     }, 800);
 }
 
-
-/**
- * Switches between the Dashboard view and the About Us page view.
- * @param {string} view - 'dashboard' or 'about'
- */
 function switchView(view) {
     const roiSection = document.getElementById('roi-definition-section');
     const resultsSection = document.getElementById('analysis-results-section');
@@ -1408,7 +1344,6 @@ function switchView(view) {
         aboutSection?.classList.remove('hidden');
         navAbout?.classList.add('active-nav');
         
-        // Collapse sidebar only when About Us is clicked
         if (typeof closeSidebar === 'function') {
             closeSidebar();
         }
@@ -1423,7 +1358,6 @@ function switchView(view) {
             roiSection?.classList.remove('hidden');
         }
 
-        // Explicitly open the sidebar when switching back to the dashboard
         if (typeof openSidebar === 'function') {
             openSidebar();
         }
@@ -1434,6 +1368,91 @@ function switchView(view) {
     }
 }
 
+function renderCharts(trends) {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+    }
+
+    trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: trends.labels,
+            datasets: [
+                {
+                    label: 'SUHI Intensity (°C)',
+                    data: trends.suhi_intensity,
+                    borderColor: '#f97316',
+                    backgroundColor: '#f97316',
+                    yAxisID: 'y',
+                    tension: 0.2
+                },
+                {
+                    label: 'Built-up Area (km²)',
+                    data: trends.built_up_area,
+                    borderColor: '#14b8a6',
+                    backgroundColor: '#14b8a6',
+                    yAxisID: 'y1',
+                    tension: 0.2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    ticks: { color: '#94a3b8' },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                },
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    ticks: { color: '#f97316' }
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    ticks: { color: '#14b8a6' }
+                }
+            }
+        }
+    });
+}
+
+async function executeAnalysis() {
+    const payload = {
+        start_year: parseInt(document.getElementById('start-year').value),
+        end_year: parseInt(document.getElementById('end-year').value),
+        interval: document.getElementById('analysis-interval')?.value || 'yearly',
+        polygon_coords: currentRoiPolygon,
+        components: {
+            lulc: document.getElementById('chk-lulc').checked,
+            lst: document.getElementById('chk-lst').checked,
+            suhi: document.getElementById('chk-suhi').checked,
+            graphs: document.getElementById('chk-graphs').checked
+        }
+    };
+
+    const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+
+    if (result.success) {
+        const graphsCard = document.getElementById('graphs-card');
+        if (payload.components.graphs) {
+            graphsCard.style.display = 'block';
+            renderCharts(result.trends);
+        } else {
+            graphsCard.style.display = 'none';
+        }
+    }
+}
 
 function logout() {
     localStorage.removeItem('active_session_user');
