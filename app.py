@@ -137,7 +137,6 @@ def api_logout():
 # ANALYSIS API (Aliased to match frontend fetch calls)
 
 # -------------------------------------------------------------------
-
 @app.route('/api/analyze', methods=['POST'])
 #@app.route('/api/v1/analyze', methods=['POST'])
 def run_analysis():
@@ -152,6 +151,15 @@ def run_analysis():
 
     # Correctly map to the frontend payload key 'interval'[cite: 14]
     analysis_interval = payload.get('interval', 'yearly')
+
+    # Extract start and end months safely if monthly analysis is chosen
+    start_month = payload.get('start_month')
+    end_month = payload.get('end_month')
+    try:
+        start_month = int(start_month) if start_month is not None else None
+        end_month = int(end_month) if end_month is not None else None
+    except (ValueError, TypeError):
+        start_month, end_month = None, None
 
     # Extract user component preferences
     components = payload.get('components', {})
@@ -184,12 +192,14 @@ def run_analysis():
         roi = HYD_REGIONS.get(region_name, HYD_REGIONS['Gachibowli'])
 
     try:
-        # Pass parameters including the correct interval to your processing backend
+        # Pass parameters including interval, start_month, and end_month to your processing backend
         gee_data = process_lulc_analysis(
             start_year=start_year,
             end_year=end_year,
             polygon_coords=roi,
-            interval=analysis_interval
+            interval=analysis_interval,
+            start_month=start_month,
+            end_month=end_month
         )
 
         tile_urls = gee_data.get("tile_urls", {})
@@ -215,6 +225,8 @@ def run_analysis():
                 "start_year": start_year, 
                 "end_year": end_year, 
                 "interval": analysis_interval,
+                "start_month": start_month,
+                "end_month": end_month,
                 "roi": roi
             },
             "tile_urls": filtered_tile_urls,
@@ -229,7 +241,6 @@ def run_analysis():
             "error": str(err),
             "message": "Satellite processing failed on Google Earth Engine."
         }), 500
-
 
 
 if __name__ == '__main__':

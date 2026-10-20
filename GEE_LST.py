@@ -152,7 +152,7 @@ def get_clean_composite(year, roi_geom, start_date=None, end_date=None):
 
 import calendar
 
-def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=None, interval="yearly", **kwargs):
+def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=None, interval="yearly", start_month=None, end_month=None, **kwargs):
     if not init_gee():
         raise RuntimeError("Google Earth Engine could not be initialized.")
 
@@ -169,12 +169,12 @@ def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=Non
     roi = ee.Geometry.Polygon([polygon_coords])
     analysis_region = roi.buffer(3000)
 
-    # Dynamic time-step generator with exact start/end dates per month/season
-    # 1. Ensure time steps explicitly build start_date and end_date
     time_steps = []
     if interval == 'monthly':
+        s_m = start_month if start_month is not None else 1
+        e_m = end_month if end_month is not None else 12
         for y in range(start_year, end_year + 1):
-            for m in range(1, 13):
+            for m in range(s_m, e_m + 1):
                 m_str = f"{m:02d}"
                 last_day = calendar.monthrange(y, m)[1]
                 time_steps.append({
@@ -225,7 +225,6 @@ def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=Non
         print(f"[LST STATUS] 🌡️ Evaluating Thermal/SUHI step {step['label']} ({idx + 1}/{len(time_steps)})...")
         time.sleep(0.2)
 
-        # 2. CRITICAL: Pass step['start_date'] and step['end_date'] here!
         comp = get_clean_composite(
             step['year'], 
             analysis_region, 
@@ -237,8 +236,6 @@ def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=Non
         built_mask = comp_roi.select("BUILT_MASK")
         rural_mask = comp.select("RURAL_MASK")
         
-        # ... rest of your reduction logic ...
-
         area_stats = (
             ee.Image.pixelArea().divide(1e6)
             .updateMask(built_mask)
@@ -298,6 +295,12 @@ def process_lst_suhi_analysis(start_year=2000, end_year=2025, polygon_coords=Non
 
     x_vals = np.array(built_area_series, dtype=float)
     y_vals = np.array(lst_series, dtype=float)
+
+    if len(x_vals) != len(y_vals):
+        min_len = min(len(x_vals), len(y_vals))
+        x_vals = x_vals[:min_len]
+        y_vals = y_vals[:min_len]
+
     if len(x_vals) > 1 and np.std(x_vals) > 0 and np.std(y_vals) > 0:
         slope, intercept = np.polyfit(x_vals, y_vals, 1)
         correlation_matrix = np.corrcoef(x_vals, y_vals)

@@ -6,6 +6,10 @@ let currentRoiPolygon = null;
 let currentMode = 'region';
 let trendChartInstance = null;
 let scatterChartInstance = null;
+//let currentCoordType = 'point';
+
+// Global AbortController to handle backend cancellation
+let activeAnalysisController = null;
 
 let builtStartLayers, builtEndLayers, lstStartLayers, lstEndLayers;
 
@@ -121,46 +125,120 @@ function centerRoiPickerOnSelectedRegion() {
 }
 
 function updateRoiFromCoordinates() {
-    const lonInput = document.getElementById('coord-x');
-    const latInput = document.getElementById('coord-y');
+    let polygonCoords = [];
 
-    if (!lonInput || !latInput) return;
+    if (currentCoordType === 'single') {
+        const latInput = document.getElementById('single-lat');
+        const lonInput = document.getElementById('single-lon');
+        const latDir = document.getElementById('single-lat-dir')?.value || 'N';
+        const lonDir = document.getElementById('single-lon-dir')?.value || 'E';
+        const shape = document.getElementById('zone-shape')?.value || 'square';
+        const sizeKm = parseFloat(document.getElementById('zone-size-km')?.value || 10);
 
-    const lon = parseFloat(lonInput.value);
-    const lat = parseFloat(latInput.value);
+        if (!latInput || !lonInput) return;
 
-    if (isNaN(lon) || isNaN(lat)) return;
+        let lat = parseFloat(latInput.value);
+        let lon = parseFloat(lonInput.value);
 
-    if (mapRoiPicker) {
-        mapRoiPicker.setView([lat, lon], 12);
+        if (isNaN(lat) || isNaN(lon)) return;
+
+        if (latDir === 'S') lat = -Math.abs(lat);
+        else lat = Math.abs(lat);
+
+        if (lonDir === 'W') lon = -Math.abs(lon);
+        else lon = Math.abs(lon);
+
+        if (mapRoiPicker) {
+            mapRoiPicker.setView([lat, lon], 11);
+        }
+
+        // Convert km size to approximate degrees (1 degree ~ 111 km)
+        const halfSpan = (sizeKm / 2) / 111.0;
+
+        if (shape === 'square') {
+            const west = lon - halfSpan;
+            const east = lon + halfSpan;
+            const south = lat - halfSpan;
+            const north = lat + halfSpan;
+
+            polygonCoords = [
+                [west, south],
+                [east, south],
+                [east, north],
+                [west, north],
+                [west, south]
+            ];
+
+            if (drawnItems) {
+                drawnItems.clearLayers();
+                const rectLayer = L.rectangle([[south, west], [north, east]], {
+                    color: '#0d9488', fillColor: '#14b8a6', fillOpacity: 0.25, weight: 2
+                });
+                drawnItems.addLayer(rectLayer);
+            }
+        } else {
+            // Circle shape represented as approximated polygon (diameter = sizeKm)
+            const radiusDeg = halfSpan;
+            const pointsCount = 32;
+            polygonCoords = [];
+            const leafletCirclePoints = [];
+
+            for (let i = 0; i <= pointsCount; i++) {
+                const angle = (i / pointsCount) * 2 * Math.PI;
+                const pLon = lon + radiusDeg * Math.cos(angle);
+                const pLat = lat + radiusDeg * Math.sin(angle);
+                polygonCoords.push([pLon, pLat]);
+                leafletCirclePoints.push([pLat, pLon]);
+            }
+
+            if (drawnItems) {
+                drawnItems.clearLayers();
+                const circleLayer = L.polygon(leafletCirclePoints, {
+                    color: '#0d9488', fillColor: '#14b8a6', fillOpacity: 0.25, weight: 2
+                });
+                drawnItems.addLayer(circleLayer);
+            }
+        }
+
+    } else {
+        // Multiple points selection (Matrix structure)
+        const rowElements = document.querySelectorAll('.vector-row');
+        if (rowElements.length < 4) return;
+
+        const leafletPolygonPoints = [];
+        polygonCoords = [];
+
+        rowElements.forEach(row => {
+            const latVal = parseFloat(row.querySelector('.vector-lat').value);
+            const lonVal = parseFloat(row.querySelector('.vector-lon').value);
+            if (!isNaN(latVal) && !isNaN(lonVal)) {
+                leafletPolygonPoints.push([latVal, lonVal]);
+                polygonCoords.push([lonVal, latVal]);
+            }
+        });
+
+        if (polygonCoords.length >= 4) {
+            // Close boundary by connecting back to the first point
+            polygonCoords.push([...polygonCoords[0]]);
+            leafletPolygonPoints.push([...leafletPolygonPoints[0]]);
+
+            if (mapRoiPicker && leafletPolygonPoints.length > 0) {
+                mapRoiPicker.setView(leafletPolygonPoints[0], 10);
+            }
+
+            if (drawnItems) {
+                drawnItems.clearLayers();
+                const polyLayer = L.polygon(leafletPolygonPoints, {
+                    color: '#0d9488', fillColor: '#14b8a6', fillOpacity: 0.25, weight: 2
+                });
+                drawnItems.addLayer(polyLayer);
+            }
+        }
     }
 
-    const delta = 0.05;
-    const west = parseFloat((lon - delta).toFixed(4));
-    const east = parseFloat((lon + delta).toFixed(4));
-    const south = parseFloat((lat - delta).toFixed(4));
-    const north = parseFloat((lat + delta).toFixed(4));
-
-    currentRoiPolygon = [
-        [west, south],
-        [east, south],
-        [east, north],
-        [west, north],
-        [west, south]
-    ];
-
-    updateBufferedBoundsFromPolygon(currentRoiPolygon);
-    checkAoiAreaWarning(currentRoiPolygon);
-
-    if (drawnItems) {
-        drawnItems.clearLayers();
-        const rectLayer = L.rectangle([[south, west], [north, east]], {
-            color: '#0d9488',
-            fillColor: '#14b8a6',
-            fillOpacity: 0.25,
-            weight: 2
-        });
-        drawnItems.addLayer(rectLayer);
+    currentRoiPolygon = polygonCoords;
+    if (typeof checkAoiAreaWarning === 'function') {
+        checkAoiAreaWarning(currentRoiPolygon);
     }
 }
 
@@ -195,9 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('tab-trend')?.addEventListener('click', () => switchChartTab('trend'));
     document.getElementById('tab-scatter')?.addEventListener('click', () => switchChartTab('scatter'));
 
-    if (typeof openSidebar === 'function') {
-        openSidebar();
-    }
+    // Sidebar remains closed by default on page load
 
     document.getElementById('select-region')?.addEventListener('change', () => {
         if (typeof centerRoiPickerOnSelectedRegion === 'function') {
@@ -224,6 +300,100 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// Handles expanding/collapsing the dashboard analysis controls section
+function toggleDashboardAccordion() {
+    const controlsContainer = document.getElementById('dashboard-controls-container');
+    const chevron = document.getElementById('dashboard-chevron');
+    const aboutSection = document.getElementById('about-us-section');
+    const roiSection = document.getElementById('roi-definition-section');
+    const resultsSection = document.getElementById('analysis-results-section');
+    
+    // Switch active nav styling
+    document.getElementById('nav-dashboard')?.classList.add('active-nav', 'bg-slate-800', 'text-white');
+    document.getElementById('nav-about')?.classList.remove('active-nav', 'bg-slate-800', 'text-white');
+
+    // Ensure we are in dashboard view and hide About Us
+    aboutSection?.classList.add('hidden');
+    
+    const hasResults = window.trendChartInstance && window.trendChartInstance.data.labels.length > 0;
+    if (hasResults) {
+        resultsSection?.classList.remove('hidden');
+        roiSection?.classList.add('hidden');
+    } else {
+        roiSection?.classList.remove('hidden');
+        resultsSection?.classList.add('hidden');
+    }
+
+    // Toggle expansion of the analysis controls container
+    if (controlsContainer) {
+        const isHidden = controlsContainer.classList.contains('hidden');
+        if (isHidden) {
+            controlsContainer.classList.remove('hidden');
+            if (chevron) chevron.style.transform = 'rotate(180deg)';
+            if (typeof openSidebar === 'function') openSidebar();
+        } else {
+            controlsContainer.classList.add('hidden');
+            if (chevron) chevron.style.transform = 'rotate(0deg)';
+        }
+    }
+
+    if (window.lucide) lucide.createIcons();
+}
+
+// Automatically contracts dashboard controls and switches view to About Us
+function switchToAboutUs() {
+    const controlsContainer = document.getElementById('dashboard-controls-container');
+    const chevron = document.getElementById('dashboard-chevron');
+    const aboutSection = document.getElementById('about-us-section');
+    const roiSection = document.getElementById('roi-definition-section');
+    const resultsSection = document.getElementById('analysis-results-section');
+
+    // Switch active nav styling
+    document.getElementById('nav-about')?.classList.add('active-nav', 'bg-slate-800', 'text-white');
+    document.getElementById('nav-dashboard')?.classList.remove('active-nav', 'bg-slate-800', 'text-white');
+
+    // Contract/hide dashboard analysis controls
+    if (controlsContainer) {
+        controlsContainer.classList.add('hidden');
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+    }
+
+    // Hide dashboard content sections and show About Us
+    roiSection?.classList.add('hidden');
+    resultsSection?.classList.add('hidden');
+    aboutSection?.classList.remove('hidden');
+
+    if (typeof openSidebar === 'function') {
+        openSidebar();
+    }
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function switchSidebarTab(tab) {
+    const controlsContainer = document.getElementById('dashboard-controls-container');
+    const btnDashboard = document.getElementById('nav-dashboard');
+    const btnAbout = document.getElementById('nav-about');
+
+    const activeStyle = "background: rgba(20, 184, 166, 0.15); color: #2dd4bf; font-weight: 600;";
+    const inactiveStyle = "background: transparent; color: #94a3b8; font-weight: 500;";
+
+    if (tab === 'dashboard') {
+        // Expand dashboard controls
+        controlsContainer?.classList.remove('hidden');
+        if (btnDashboard) btnDashboard.style.cssText = activeStyle;
+        if (btnAbout) btnAbout.style.cssText = inactiveStyle;
+        switchView('dashboard');
+    } else if (tab === 'about') {
+        // Contract/hide dashboard controls when About Us is active
+        controlsContainer?.classList.add('hidden');
+        if (btnAbout) btnAbout.style.cssText = activeStyle;
+        if (btnDashboard) btnDashboard.style.cssText = inactiveStyle;
+        switchView('about');
+    }
+    if (window.lucide) lucide.createIcons();
+}
 
 function toggleSidebar(e) {
     if (e) e.stopPropagation();
@@ -583,7 +753,7 @@ function calculateEstimatedTimeAndFrames(startYear, endYear, interval, polygonCo
 
     if (interval === 'monthly') totalFrames = totalYears * 12;
     else if (interval === 'seasonal') totalFrames = totalYears * 4;
-    else if (interval === '5year') totalFrames = Math.ceil(totalYears / 5);
+    else if (interval === '5-yearly') totalFrames = Math.floor((endYear - startYear) / 5) + 1;
 
     const areaKm2 = Math.round(calculatePolygonAreaKm2(polygonCoords) || 100);
     const estimatedSeconds = Math.max(3, Math.round(totalFrames * (areaKm2 / 100) * 0.8));
@@ -595,6 +765,46 @@ function calculateEstimatedTimeAndFrames(startYear, endYear, interval, polygonCo
     };
 }
 
+function calculateComponentEstimates(startYear, endYear, interval, polygonCoords, components) {
+    const totalYears = (endYear - startYear) + 1;
+    let totalFrames = totalYears;
+
+    if (interval === 'monthly') totalFrames = totalYears * 12;
+    else if (interval === 'seasonal') totalFrames = totalYears * 4;
+    else if (interval === '5-yearly') totalFrames = Math.floor((endYear - startYear) / 5) + 1;
+
+    const areaKm2 = Math.round(calculatePolygonAreaKm2(polygonCoords) || 100);
+
+    // Calculate individual times (approx. 0.8s per frame per active component)
+    const factor = (areaKm2 / 100) * 0.8;
+    const lulcSec = components.lulc ? Math.max(2, Math.round(totalFrames * factor * 0.7)) : 0;
+    const lstSec = components.lst ? Math.max(2, Math.round(totalFrames * factor * 0.8)) : 0;
+    const suhiSec = components.suhi ? Math.max(1, Math.round(totalFrames * factor * 0.4)) : 0;
+    const graphsSec = components.graphs ? 2 : 0;
+
+    const totalEstimatedSeconds = lulcSec + lstSec + suhiSec + graphsSec;
+
+    let msg = `<div style="font-family: inherit; line-height: 1.6;">
+        <div style="font-weight: 600; margin-bottom: 8px; color: #f3f4f6;">
+            Estimated Round Times <span style="font-weight: normal; opacity: 0.8; font-size: 0.9em;">(${totalFrames} frames across ~${areaKm2} km²)</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; border-left: 2px solid #0d9488; padding-left: 10px;">`;
+
+    if (components.lulc) msg += `<div style="display: flex; justify-content: space-between;"><span>• LULC Round:</span> <strong>~${2*lulcSec}s</strong></div>`;
+    if (components.lst) msg += `<div style="display: flex; justify-content: space-between;"><span>• LST Round:</span> <strong>~${2*lstSec}s</strong></div>`;
+    if (components.suhi) msg += `<div style="display: flex; justify-content: space-between;"><span>• SUHI Round:</span> <strong>~${suhiSec}s</strong></div>`;
+    if (components.graphs) msg += `<div style="display: flex; justify-content: space-between;"><span>• Graphs Round:</span> <strong>~${graphsSec}s</strong></div>`;
+
+    msg += `</div>
+        <div style="background-color: rgba(13, 148, 136, 0.15); padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(13, 148, 136, 0.3);">
+            <span style="font-size: 0.95em; font-weight: 500;">Total Estimated Time:</span>
+            <span style="font-size: 1.1em; color: #2dd4bf; font-weight: bold;">~${2*totalEstimatedSeconds}s</span>
+        </div>
+    </div>`;
+
+    return { totalEstimatedSeconds, timeMessage: msg };
+}
+
 async function executeFullAnalysis() {
     const startYear = parseInt(document.getElementById('start-year')?.value || 2000, 10);
     const endYear = parseInt(document.getElementById('end-year')?.value || 2025, 10);
@@ -602,120 +812,186 @@ async function executeFullAnalysis() {
     const xCoord = parseFloat(document.getElementById('coord-x')?.value || 78.0081);
     const yCoord = parseFloat(document.getElementById('coord-y')?.value || 27.1767);
     
-    // Read interval dynamically from dropdown or checkbox fallback
-    const interval = document.getElementById('analysis-interval')?.value || 
-                     (document.getElementById('monthly-checkbox')?.checked ? 'monthly' : 'yearly');
+    const interval = document.getElementById('analysis-interval')?.value || 'yearly';
+    
+    // Retrieve monthly parameters if monthly analysis is selected
+    let startMonth = null;
+    let endMonth = null;
+    if (interval === 'monthly') {
+        startMonth = parseInt(document.getElementById('start-month')?.value || 1, 10);
+        endMonth = parseInt(document.getElementById('end-month')?.value || 12, 10);
+        
+        if (startMonth > endMonth) {
+            alert(`Start month cannot be later than End month.`);
+            return;
+        }
+    }
                      
-    const wantLulc = document.getElementById('chk-lulc')?.checked ?? true;
-    const wantLst = document.getElementById('chk-lst')?.checked ?? true;
-    const wantSuhi = document.getElementById('chk-suhi')?.checked ?? true;
-    const wantGraphs = document.getElementById('chk-graphs')?.checked ?? true;
+    const wantLulc = document.getElementById('chk-lulc')?.checked ?? false;
+    const wantLst = document.getElementById('chk-lst')?.checked ?? false;
+    const wantSuhi = document.getElementById('chk-suhi')?.checked ?? false;
+    const wantGraphs = document.getElementById('chk-graphs')?.checked ?? false;
 
-    const estimation = calculateEstimatedTimeAndFrames(startYear, endYear, interval, currentRoiPolygon);
-    console.log(estimation.timeMessage);
+    const components = { lulc: wantLulc, lst: wantLst, suhi: wantSuhi, graphs: wantGraphs };
 
-    const payload = {
-        roi_mode: currentMode,
-        start_year: startYear,
-        end_year: endYear,
-        interval: interval,
-        components: { lulc: wantLulc, lst: wantLst, suhi: wantSuhi, graphs: wantGraphs },
-        region_name: regionName,
-        x: xCoord,
-        y: yCoord,
-        polygon_coords: currentRoiPolygon
-    };
+    if (!wantLulc && !wantLst && !wantSuhi && !wantGraphs) {
+        alert("Please select at least one analysis component from the checkboxes.");
+        return;
+    }
 
     if (startYear > endYear) {
         alert(`Start year (${startYear}) cannot be greater than End year (${endYear}).`);
         return;
     }
 
-    const steps = [
-        { msg: "Initializing Region of Interest (ROI) and geometry boundaries...", action: async () => {
-            if (currentMode === 'region') {
-                centerRoiPickerOnSelectedRegion();
-            } else if (currentMode === 'coordinates') {
-                updateRoiFromCoordinates();
-            }
+    document.getElementById('section-lulc-wrapper')?.classList.toggle('hidden', !wantLulc);
+    document.getElementById('section-lst-wrapper')?.classList.toggle('hidden', !wantLst);
+    document.getElementById('section-suhi-wrapper')?.classList.toggle('hidden', !wantSuhi);
+    document.getElementById('section-graphs-wrapper')?.classList.toggle('hidden', !wantGraphs);
 
-            if (!currentRoiPolygon || currentRoiPolygon.length === 0) {
-                if (MAJOR_INDIAN_CITIES[regionName]) {
-                    const [cLat, cLon] = MAJOR_INDIAN_CITIES[regionName];
-                    currentRoiPolygon = createBoundingPolygonFromCoords(cLat, cLon, 0.06);
-                } else {
-                    currentRoiPolygon = createBoundingPolygonFromCoords(yCoord, xCoord, 0.05);
-                }
-            }
-            updateBufferedBoundsFromPolygon(currentRoiPolygon);
-        }},
-        { msg: "Preparing analysis UI layout and clearing previous layers...", action: async () => {
-            document.getElementById('lbl-built-1').innerText = `LULC CLASSIFICATION – ${startYear}`;
-            document.getElementById('lbl-built-2').innerText = `LULC CLASSIFICATION – ${endYear}`;
-            document.getElementById('lbl-lst-1').innerText = `LST HEATMAP – ${startYear}`;
-            document.getElementById('lbl-lst-2').innerText = `LST HEATMAP – ${endYear}`;
+    const payload = {
+        roi_mode: currentMode,
+        start_year: startYear,
+        end_year: endYear,
+        interval: interval,
+        start_month: startMonth,
+        end_month: endMonth,
+        components: components,
+        region_name: regionName,
+        x: xCoord,
+        y: yCoord,
+        polygon_coords: currentRoiPolygon
+    };
 
-            if (typeof clearAllAnalysisLayers === 'function') {
-                clearAllAnalysisLayers();
-            }
-        }},
-        { msg: `Extracting multi-spectral composites for ${startYear} and ${endYear}...`, action: async () => {
-            await new Promise(r => setTimeout(r, 200));
-        }},
-        { msg: "Running Land Use Land Cover (LULC) classification models...", action: async () => {
-            await new Promise(r => setTimeout(r, 250));
-        }},
-        { msg: "Computing Land Surface Temperature (LST) heatmaps & SUHI metrics...", action: async () => {
-            await new Promise(r => setTimeout(r, 250));
-        }},
-        { msg: "Executing backend analysis query on Google Earth Engine...", action: async () => {
-            // FIXED: Using the properly configured payload with interval and components
-            const fetchPromise = fetch('/api/analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(res => res.json());
+    // ... rest of your executeFullAnalysis function ...
 
-            window._cachedAnalysisResult = await fetchPromise;
-        }},
-        { msg: "Processing response data and formatting metrics...", action: async () => {
-            const result = window._cachedAnalysisResult;
-            if (!result || !result.success) {
-                throw new Error(result?.error || result?.warning || result?.message || "GEE computation error");
-            }
-        }},
-        { msg: "Finalizing dashboard maps and charts...", action: async () => {
-            const result = window._cachedAnalysisResult;
-            
-            document.getElementById('roi-definition-section')?.classList.add('hidden');
-            document.getElementById('analysis-results-section')?.classList.remove('hidden');
+    activeAnalysisController = new AbortController();
+    const { signal } = activeAnalysisController;
 
-            if (typeof switchChartTab === 'function') {
-                switchChartTab('trend');
-            }
+    const steps = [];
 
-            setTimeout(() => {
-                [mapBuiltStart, mapBuiltEnd, mapLSTStart, mapLSTEnd].forEach(m => m && m.invalidateSize());
-                renderAnalysisLayers(result);
-            }, 100);
+    steps.push({ msg: "Initializing Region of Interest (ROI) and geometry boundaries...", action: async () => {
+        if (currentMode === 'region') {
+            centerRoiPickerOnSelectedRegion();
+        } else if (currentMode === 'coordinates') {
+            updateRoiFromCoordinates();
+        }
 
-            if (typeof updateDashboardMetrics === 'function') {
-                updateDashboardMetrics(result);
+        if (!currentRoiPolygon || currentRoiPolygon.length === 0) {
+            if (MAJOR_INDIAN_CITIES[regionName]) {
+                const [cLat, cLon] = MAJOR_INDIAN_CITIES[regionName];
+                currentRoiPolygon = createBoundingPolygonFromCoords(cLat, cLon, 0.06);
+            } else {
+                currentRoiPolygon = createBoundingPolygonFromCoords(yCoord, xCoord, 0.05);
             }
+        }
+        updateBufferedBoundsFromPolygon(currentRoiPolygon);
+    }});
+
+    steps.push({ msg: "Preparing analysis UI layout and clearing previous layers...", action: async () => {
+        document.getElementById('lbl-built-1').innerText = `LULC CLASSIFICATION – ${startYear}`;
+        document.getElementById('lbl-built-2').innerText = `LULC CLASSIFICATION – ${endYear}`;
+        document.getElementById('lbl-lst-1').innerText = `LST HEATMAP – ${startYear}`;
+        document.getElementById('lbl-lst-2').innerText = `LST HEATMAP – ${endYear}`;
+
+        if (typeof clearAllAnalysisLayers === 'function') {
+            clearAllAnalysisLayers();
+        }
+    }});
+
+    // Conditional LULC Step
+    if (wantLulc) {
+        steps.push({ msg: "Running Land Use Land Cover (LULC) classification round...", action: async () => {
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(resolve, 300);
+                signal.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+            });
+        }});
+    }
+
+    // Conditional LST Step - Ensures LST is completely skipped if unchecked
+    if (wantLst) {
+        steps.push({ msg: "Computing Land Surface Temperature (LST) heatmaps round...", action: async () => {
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(resolve, 300);
+                signal.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+            });
+        }});
+    }
+
+    // Conditional SUHI Step
+    if (wantSuhi) {
+        steps.push({ msg: "Calculating Surface Urban Heat Island (SUHI) intensity round...", action: async () => {
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(resolve, 200);
+                signal.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+            });
+        }});
+    }
+
+    steps.push({ msg: "Executing backend query on Google Earth Engine for selected components...", action: async () => {
+        const fetchPromise = fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: signal
+        }).then(res => res.json());
+
+        window._cachedAnalysisResult = await fetchPromise;
+    }});
+
+    if (wantGraphs) {
+        steps.push({ msg: "Generating trends, scatter regression, and graph metrics...", action: async () => {
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(resolve, 200);
+                signal.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+            });
+        }});
+    }
+
+    steps.push({ msg: "Finalizing dashboard maps and UI display...", action: async () => {
+        const result = window._cachedAnalysisResult;
+        
+        document.getElementById('roi-definition-section')?.classList.add('hidden');
+        document.getElementById('analysis-results-section')?.classList.remove('hidden');
+
+        if (wantGraphs && typeof switchChartTab === 'function') {
+            switchChartTab('trend');
+        }
+
+        setTimeout(() => {
+            [mapBuiltStart, mapBuiltEnd, mapLSTStart, mapLSTEnd].forEach(m => m && m.invalidateSize());
+            if (wantLulc || wantLst) renderAnalysisLayers(result);
+        }, 100);
+
+        if (wantSuhi && typeof updateDashboardMetrics === 'function') {
+            updateDashboardMetrics(result);
+        }
+        if (wantGraphs) {
             updateAnalyticsCharts(result);
+        }
 
-            if (typeof closeSidebar === 'function') {
-                closeSidebar();
-            }
-        }}
-    ];
+        if (typeof closeSidebar === 'function') {
+            closeSidebar();
+        }
+    }});
 
     const totalSteps = steps.length;
     let currentStep = 0;
 
-    const loadingOverlay = document.getElementById('loading-overlay');
-    loadingOverlay?.classList.remove('hidden');
-    loadingOverlay?.classList.add('flex');
+    const progressModal = document.getElementById('progress-modal');
+    const progressBarFill = document.getElementById('progress-bar-fill');
+    const progressPercentage = document.getElementById('progress-percentage');
+    const progressStepText = document.getElementById('progress-step-text');
+    const minimizedWidget = document.getElementById('minimized-progress-widget');
+
+    if (progressModal) {
+        progressModal.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+    }
+    if (minimizedWidget) {
+        minimizedWidget.classList.add('hidden');
+        minimizedWidget.classList.remove('flex');
+    }
 
     const analyzeBtn = document.getElementById('analyze-btn');
     if (analyzeBtn) {
@@ -725,23 +1001,41 @@ async function executeFullAnalysis() {
 
     try {
         for (let i = 0; i < steps.length; i++) {
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
             currentStep = i + 1;
+            const percentage = Math.round((currentStep / totalSteps) * 100);
+
+            if (progressStepText) progressStepText.innerText = steps[i].msg;
+            if (progressPercentage) progressPercentage.innerText = `${percentage}%`;
+            if (progressBarFill) progressBarFill.style.width = `${percentage}%`;
+
             await steps[i].action();
-            completeStep(currentStep, totalSteps, steps[i].msg);
-            await new Promise(r => setTimeout(r, 200));
+            
+            if (typeof completeStep === 'function') {
+                completeStep(currentStep, totalSteps, steps[i].msg);
+            }
+            
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
         }
 
         setTimeout(() => {
-            loadingOverlay?.classList.add('hidden');
-            loadingOverlay?.classList.remove('flex');
+            if (progressModal) progressModal.classList.add('hidden');
+            if (analyzeBtn) {
+                analyzeBtn.disabled = false;
+                analyzeBtn.innerHTML = `<i data-lucide="trending-up" class="w-5 h-5"></i><span>Quantify SUHI & Growth</span>`;
+                if (window.lucide) lucide.createIcons();
+            }
         }, 400);
 
     } catch (err) {
-        loadingOverlay?.classList.add('hidden');
-        loadingOverlay?.classList.remove('flex');
-        console.error('Error during analysis sequence:', err);
-        alert('Analysis failed: ' + err.message);
-    } finally {
+        if (err.name === 'AbortError') {
+            console.log("Analysis cancelled by user.");
+        } else {
+            console.error("Analysis error:", err);
+            alert(`Analysis failed: ${err.message}`);
+        }
+        if (progressModal) progressModal.classList.add('hidden');
         if (analyzeBtn) {
             analyzeBtn.disabled = false;
             analyzeBtn.innerHTML = `<i data-lucide="trending-up" class="w-5 h-5"></i><span>Quantify SUHI & Growth</span>`;
@@ -1326,7 +1620,7 @@ function downloadMapCard(mapDivId, filenamePrefix, mapInstance) {
         });
     }, 800);
 }
-
+// Updated switchView function for Dashboard and About Us tabs
 function switchView(view) {
     const roiSection = document.getElementById('roi-definition-section');
     const resultsSection = document.getElementById('analysis-results-section');
@@ -1335,36 +1629,57 @@ function switchView(view) {
     const navDashboard = document.getElementById('nav-dashboard');
     const navAbout = document.getElementById('nav-about');
 
-    navDashboard?.classList.remove('active-nav');
-    navAbout?.classList.remove('active-nav');
+    // Reset active nav styling on both items
+    navDashboard?.classList.remove('active-nav', 'bg-slate-800', 'text-white');
+    navAbout?.classList.remove('active-nav', 'bg-slate-800', 'text-white');
 
     if (view === 'about') {
+        // Hide dashboard view components
         roiSection?.classList.add('hidden');
         resultsSection?.classList.add('hidden');
-        aboutSection?.classList.remove('hidden');
-        navAbout?.classList.add('active-nav');
         
+        // Show About Us component
+        aboutSection?.classList.remove('hidden');
+        
+        // Highlight About tab
+        navDashboard?.classList.remove('text-teal-400');
+        navAbout?.classList.add('active-nav', 'bg-slate-800', 'text-white');
+        
+        // Close sidebar panel if open on mobile or if desired layout convention
         if (typeof closeSidebar === 'function') {
             closeSidebar();
         }
     } else {
+        // Hide About Us component
         aboutSection?.classList.add('hidden');
-        navDashboard?.classList.add('active-nav');
+        
+        // Highlight Dashboard tab
+        navDashboard?.classList.add('active-nav', 'bg-slate-800', 'text-white');
 
+        // Check if analysis results are currently available
         const hasResults = window.trendChartInstance && window.trendChartInstance.data.labels.length > 0;
         if (hasResults) {
             resultsSection?.classList.remove('hidden');
+            roiSection?.classList.add('hidden');
         } else {
             roiSection?.classList.remove('hidden');
+            resultsSection?.classList.add('hidden');
         }
 
+        // Open the sidebar choice window for region selection, parameters, and timeline workflow
         if (typeof openSidebar === 'function') {
             openSidebar();
         }
 
+        // Fix Leaflet map sizing glitches after transition/layout visibility change
         setTimeout(() => {
             if (window.mapRoiPicker) window.mapRoiPicker.invalidateSize();
         }, 150);
+    }
+
+    // Refresh Lucide icons if dynamically modified
+    if (window.lucide) {
+        lucide.createIcons();
     }
 }
 
@@ -1451,6 +1766,460 @@ async function executeAnalysis() {
         } else {
             graphsCard.style.display = 'none';
         }
+    }
+}
+
+// Track current coordinate input mode
+let currentCoordType = 'single';
+
+function setCoordInputType(type) {
+    currentCoordType = type;
+    document.getElementById('btn-coord-single')?.classList.toggle('bg-teal-600', type === 'single');
+    document.getElementById('btn-coord-single')?.classList.toggle('text-white', type === 'single');
+    document.getElementById('btn-coord-single')?.classList.toggle('text-slate-400', type !== 'single');
+
+    document.getElementById('btn-coord-multiple')?.classList.toggle('bg-teal-600', type === 'multiple');
+    document.getElementById('btn-coord-multiple')?.classList.toggle('text-white', type === 'multiple');
+    document.getElementById('btn-coord-multiple')?.classList.toggle('text-slate-400', type !== 'multiple');
+
+    document.getElementById('subpanel-coord-single')?.classList.toggle('hidden', type !== 'single');
+    document.getElementById('subpanel-coord-multiple')?.classList.toggle('hidden', type !== 'multiple');
+
+    if (type === 'multiple') {
+        initDefaultMatrixPoints();
+    }
+    updateRoiFromCoordinates();
+}
+
+// Initialize default 4 points matrix for multiple point selection
+function initDefaultMatrixPoints() {
+    const container = document.getElementById('matrix-points-container');
+    if (!container || container.children.length > 0) return;
+
+    const defaultPoints = [
+        { lat: 28.5000, lon: 77.1000 },
+        { lat: 28.5000, lon: 77.3000 },
+        { lat: 28.7000, lon: 77.3000 },
+        { lat: 28.7000, lon: 77.1000 }
+    ];
+
+    container.innerHTML = '';
+    defaultPoints.forEach((pt, index) => {
+        appendVectorPointRow(pt.lat, pt.lon, index + 1);
+    });
+}
+
+function appendVectorPointRow(lat = 28.0, lon = 77.0, index = null) {
+    const container = document.getElementById('matrix-points-container');
+    if (!container) return;
+
+    const rowIdx = index || container.children.length + 1;
+    const rowDiv = document.createElement('div');
+    rowDiv.className = "grid grid-cols-12 gap-1.5 items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800 vector-row";
+
+    rowDiv.innerHTML = `
+        <span class="col-span-2 text-[10px] font-bold text-teal-400 text-center">P${rowIdx}</span>
+        <div class="col-span-4">
+            <input type="number" step="0.0001" value="${lat}" class="sidebar-input vector-lat text-[11px] py-1" placeholder="Lat" oninput="updateRoiFromCoordinates()">
+        </div>
+        <div class="col-span-4">
+            <input type="number" step="0.0001" value="${lon}" class="sidebar-input vector-lon text-[11px] py-1" placeholder="Lon" oninput="updateRoiFromCoordinates()">
+        </div>
+        <div class="col-span-2 flex justify-center">
+            <button type="button" onclick="removeVectorPoint(event, this)" class="text-rose-400 hover:text-rose-300 p-1 text-xs transition" title="Remove Point">×</button>
+        </div>
+    `;
+    container.appendChild(rowDiv);
+}
+
+function lockSidebarOpen() {
+    const sidebar = document.getElementById('side-panel'); // Replace with your actual sidebar ID
+    if (sidebar) {
+        sidebar.classList.remove('collapsed', 'translate-x-full');
+        sidebar.classList.add('expanded'); // Or whatever class keeps your panel open
+    }
+}
+
+function removeVectorPoint(event, btn) {
+    // Prevent any parent click handlers or form submissions from triggering
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    const container = document.getElementById('matrix-points-container');
+    if (!container) return;
+
+    // Ensure minimum point threshold
+    if (container.children.length <= 4) {
+        alert("Minimum 4 points are required to form a closed polygon boundary.");
+        return;
+    }
+
+    // Find and remove only the specific vector row
+    const row = btn.closest('.vector-row');
+    if (row) {
+        row.remove();
+    }
+
+    // Recalculate coordinates/ROI without rebuilding or re-rendering the sidebar
+    if (typeof updateRoiFromCoordinates === 'function') {
+        updateRoiFromCoordinates();
+    }
+}
+
+function addVectorPoint() {
+    appendVectorPointRow(28.6000, 77.2000);
+    updateRoiFromCoordinates();
+}
+
+
+function startAnalysis() {
+    const modalOverlay = document.getElementById('progress-modal');
+    if (!modalOverlay) return;
+
+    modalOverlay.classList.remove('hidden');
+    modalOverlay.classList.remove('opacity-0', 'pointer-events-none');
+
+    console.log("Analysis initiated, progress window opened.");
+}
+
+let isModalMinimized = false;
+
+function minimizeProgressModal() {
+    isModalMinimized = true;
+    const modalOverlay = document.getElementById('progress-modal');
+    const minimizedWidget = document.getElementById('minimized-progress-widget');
+
+    modalOverlay.classList.add('opacity-0', 'pointer-events-none');
+    minimizedWidget.classList.remove('hidden');
+    minimizedWidget.classList.add('flex');
+}
+
+function restoreProgressModal() {
+    isModalMinimized = false;
+    const modalOverlay = document.getElementById('progress-modal');
+    const minimizedWidget = document.getElementById('minimized-progress-widget');
+
+    modalOverlay.classList.remove('opacity-0', 'pointer-events-none');
+    minimizedWidget.classList.add('hidden');
+    minimizedWidget.classList.remove('flex');
+}
+
+function cancelProgressModal() {
+    if (confirm("Are you sure you want to cancel the ongoing analysis?")) {
+        // 1. Abort any ongoing fetch request and workflow steps
+        if (activeAnalysisController) {
+            activeAnalysisController.abort();
+            activeAnalysisController = null;
+        }
+
+        const modalOverlay = document.getElementById('progress-modal');
+        const minimizedWidget = document.getElementById('minimized-progress-widget');
+
+        // 2. Hide modal and widget
+        modalOverlay.classList.add('hidden');
+        minimizedWidget.classList.add('hidden');
+
+        // 3. Reset Analyze button state back to active
+        const analyzeBtn = document.getElementById('analyze-btn');
+        if (analyzeBtn) {
+            analyzeBtn.disabled = false;
+            analyzeBtn.innerHTML = `<i data-lucide="trending-up" class="w-5 h-5"></i><span>Quantify SUHI & Growth</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        console.log("Analysis explicitly aborted and cancelled by user.");
+    }
+}
+
+function handleRunAnalysis() {
+    const lulc = document.getElementById('chk-lulc').checked;
+    const lst = document.getElementById('chk-lst').checked;
+    const suhi = document.getElementById('chk-suhi').checked;
+    const graphs = document.getElementById('chk-graphs').checked;
+
+    if (!lulc && !lst && !suhi && !graphs) {
+        alert("Please select the result checkbox"); 
+        return; 
+    }
+
+    console.log("Analysis running...");
+}
+
+function closeFramesPopup() {
+    const modal = document.getElementById('frames-popup-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+function showFramesPopup(message) {
+    const modal = document.getElementById('frames-popup-modal');
+    const msgElement = document.getElementById('frames-popup-message');
+    if (msgElement) {
+        msgElement.innerHTML = message;
+    }
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function handleStartYearChange() {
+    const startYearSelect = document.getElementById('start-year');
+    const endYearSelect = document.getElementById('end-year');
+    
+    const selectedStartYear = parseInt(startYearSelect.value);
+    const currentEndYear = parseInt(endYearSelect.value);
+
+    // Loop through all options in the end year dropdown
+    for (let option of endYearSelect.options) {
+        if (!option.value) continue; // Skip the placeholder option
+
+        const optionYear = parseInt(option.value);
+
+        if (optionYear < selectedStartYear) {
+            // Disable years less than the start year
+            option.disabled = true;
+            option.style.color = '#d1d5db'; // Optional: visual cue (grayed out)
+        } else {
+            // Enable valid years
+            option.disabled = false;
+            option.style.color = ''; // Reset color
+        }
+    }
+
+    // If the currently selected end year is now invalid (less than start year), reset it
+    if (currentEndYear && currentEndYear < selectedStartYear) {
+        endYearSelect.value = "";
+    }
+}
+
+// Accordion toggle function for About Us topics (auto-collapses others)
+function toggleAboutAccordion(topicId) {
+    const allTopics = ['topic-1', 'topic-2', 'topic-3'];
+    
+    allTopics.forEach(id => {
+        const content = document.getElementById(`content-${id}`);
+        const icon = document.getElementById(`icon-${id}`);
+        
+        if (id === topicId) {
+            const isHidden = content.classList.contains('hidden');
+            if (isHidden) {
+                content.classList.remove('hidden');
+                if (icon) icon.style.transform = 'rotate(180deg)';
+            } else {
+                content.classList.add('hidden');
+                if (icon) icon.style.transform = 'rotate(0deg)';
+            }
+        } else {
+            content?.classList.add('hidden');
+            if (icon) icon.style.transform = 'rotate(0deg)';
+        }
+    });
+    if (window.lucide) lucide.createIcons();
+}
+
+// --- Shapefile Upload & Geometry Analysis State ---
+let loadedShapefileGeoJSON = null;
+let selectedShapefileFeatureIndex = 0;
+
+// Update setRoiMode to support 'shapefile'
+function setRoiMode(mode) {
+    currentMode = mode;
+
+    if (mode !== 'draw' && mode !== 'shapefile' && drawnItems) {
+        drawnItems.clearLayers();
+        currentRoiPolygon = null;
+    }
+
+    ['region', 'coordinates', 'draw', 'shapefile'].forEach(m => {
+        document.getElementById(`btn-mode-${m}`)?.classList.toggle('active-roi-tab', m === mode);
+        document.getElementById(`panel-${m}`)?.classList.toggle('hidden', m !== mode);
+    });
+}
+
+// Handle Shapefile (.zip) or GeoJSON file upload
+async function handleShapefileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const labelEl = document.getElementById('shapefile-upload-label');
+    if (labelEl) labelEl.textContent = `Loaded: ${file.name}`;
+
+    try {
+        let geojson;
+        const fileNameLower = file.name.toLowerCase();
+
+        if (fileNameLower.endsWith('.zip')) {
+            // Parse zipped Shapefile using shpjs[cite: 9]
+            const arrayBuffer = await file.arrayBuffer();
+            let parsed = await shp(arrayBuffer);
+            
+            if (Array.isArray(parsed)) {
+                let allFeatures = [];
+                parsed.forEach(fc => {
+                    if (fc && fc.features) {
+                        allFeatures = allFeatures.concat(fc.features);
+                    }
+                });
+                geojson = { type: 'FeatureCollection', features: allFeatures };
+            } else {
+                geojson = parsed;
+            }
+        } else if (fileNameLower.endsWith('.kml')) {
+            // Parse KML file using DOMParser and toGeoJSON
+            const text = await file.text();
+            const dom = new DOMParser().parseFromString(text, 'text/xml');
+            
+            // Check for XML parsing errors
+            const parserError = dom.querySelector('parsererror');
+            if (parserError) {
+                throw new Error('Invalid KML XML structure.');
+            }
+            
+            geojson = toGeoJSON.kml(dom);
+        } else {
+            // Parse standard GeoJSON / JSON[cite: 9]
+            const arrayBuffer = await file.arrayBuffer();
+            const textDecoder = new TextDecoder();
+            const jsonString = textDecoder.decode(arrayBuffer);
+            geojson = JSON.parse(jsonString);
+        }
+
+        // Normalize GeoJSON structures[cite: 9]
+        if (geojson.type === 'Feature') {
+            geojson = { type: 'FeatureCollection', features: [geojson] };
+        } else if (geojson.type && geojson.type !== 'FeatureCollection') {
+            geojson = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: geojson, properties: {} }] };
+        }
+
+        if (!geojson || !geojson.features || geojson.features.length === 0) {
+            alert('No valid spatial features found in the uploaded file.');
+            return;
+        }
+
+        loadedShapefileGeoJSON = geojson;
+        populateShapefileFeatureSelector(geojson.features);
+
+        document.getElementById('shapefile-analysis-subpanel')?.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+
+    } catch (err) {
+        console.error('Error parsing spatial file:', err);
+        alert('Failed to parse spatial file. Ensure your .zip contains valid .shp/.dbf files, or your .kml / .geojson file is correctly formatted.');
+    }
+}
+
+// Populate the feature selector dropdown
+function populateShapefileFeatureSelector(features) {
+    const selectEl = document.getElementById('shapefile-feature-select');
+    const countEl = document.getElementById('shapefile-feature-count');
+    if (!selectEl) return;
+
+    countEl.textContent = `${features.length} feature(s)`;
+    selectEl.innerHTML = '<option value="" disabled selected>-- Select Geometry Feature --</option>';
+
+    features.forEach((feat, idx) => {
+        const props = feat.properties || {};
+        
+        // 1. Dynamically find ANY column key that contains "name" (case-insensitive)
+        const nameKey = Object.keys(props).find(key => key.toLowerCase().includes('name'));
+
+        // 2. Fallback check for other common identifier columns if no "name" column exists
+        const fallbackKey = Object.keys(props).find(key => {
+            const lowerKey = key.toLowerCase();
+            return lowerKey.includes('district') || lowerKey.includes('id') || lowerKey.includes('code');
+        });
+
+        // 3. Extract the name using the found key, or fallback to "Feature #X"
+        const name = (nameKey && props[nameKey]) || 
+                    (fallbackKey && props[fallbackKey]) || 
+                    `Feature #${idx + 1}`;
+
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `${idx + 1}. ${name}`;
+        selectEl.appendChild(opt);
+    });
+
+    // Auto-select first feature by default
+    if (features.length > 0) {
+        selectEl.value = '0';
+        onShapefileFeatureSelected(0);
+    }
+}
+
+// Handle selection of a specific feature from the uploaded shapefile
+function onShapefileFeatureSelected(indexStr) {
+    const idx = parseInt(indexStr);
+    if (isNaN(idx) || !loadedShapefileGeoJSON || !loadedShapefileGeoJSON.features[idx]) return;
+
+    selectedShapefileFeatureIndex = idx;
+    const feature = loadedShapefileGeoJSON.features[idx];
+    const geomType = feature.geometry.type;
+
+    document.getElementById('shp-info-type').textContent = geomType;
+
+    // Render preview on map-roi-picker
+    if (drawnItems) {
+        drawnItems.clearLayers();
+        const geoJsonLayer = L.geoJSON(feature, {
+            style: { color: '#0d9488', fillColor: '#14b8a6', fillOpacity: 0.3, weight: 2 }
+        });
+        drawnItems.addLayer(geoJsonLayer);
+
+        if (mapRoiPicker) {
+            mapRoiPicker.fitBounds(geoJsonLayer.getBounds(), { padding: [30, 30] });
+        }
+
+        // Approximate area calculation in km² (rough bounding box estimation)
+        const bounds = geoJsonLayer.getBounds();
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+        const approxArea = ((ne.lat - sw.lat) * 111) * ((ne.lng - sw.lng) * 111 * Math.cos((sw.lat + ne.lat) / 360 * Math.PI));
+        document.getElementById('shp-info-area').textContent = `${Math.abs(approxArea).toFixed(2)} km²`;
+    }
+}
+
+// Confirm and lock in the shapefile ROI geometry for analysis
+function confirmShapefileRoiSelection() {
+    if (!loadedShapefileGeoJSON || !loadedShapefileGeoJSON.features[selectedShapefileFeatureIndex]) {
+        alert('Please select a valid spatial feature first.');
+        return;
+    }
+
+    const feature = loadedShapefileGeoJSON.features[selectedShapefileFeatureIndex];
+    let coords = [];
+
+    // Extract coordinates into [lon, lat] boundary format
+    const geom = feature.geometry;
+    if (geom.type === 'Polygon') {
+        coords = geom.coordinates[0].map(pt => [parseFloat(pt[0]), parseFloat(pt[1])]);
+    } else if (geom.type === 'MultiPolygon') {
+        coords = geom.coordinates[0][0].map(pt => [parseFloat(pt[0]), parseFloat(pt[1])]);
+    } else {
+        alert('Only Polygon and MultiPolygon geometries are supported for SUHI analysis.');
+        return;
+    }
+
+    currentRoiPolygon = coords;
+    if (typeof checkAoiAreaWarning === 'function') {
+        checkAoiAreaWarning(currentRoiPolygon);
+    }
+
+    alert('Shapefile geometry successfully set as Region of Interest (ROI)! You can now proceed to run the analysis.');
+}
+
+function handleIntervalChange() {
+    const intervalSelect = document.getElementById('analysis-interval');
+    const monthlyContainer = document.getElementById('monthly-selector-container');
+    if (!intervalSelect || !monthlyContainer) return;
+
+    if (intervalSelect.value === 'monthly') {
+        monthlyContainer.classList.remove('hidden');
+    } else {
+        monthlyContainer.classList.add('hidden');
     }
 }
 

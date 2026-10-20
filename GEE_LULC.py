@@ -178,7 +178,7 @@ def get_spatial_centroid(built_img, roi_geom):
         "y": float(mean_coords.get("y", 0.0) or 0.0),
     }
 
-def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, interval="yearly", **kwargs):
+def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, interval="yearly", start_month=None, end_month=None, **kwargs):
     if not init_gee():
         raise RuntimeError("Google Earth Engine could not be initialized.")
 
@@ -198,8 +198,10 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, i
     # --- DYNAMIC INTERVAL TIME-STEP GENERATOR ---
     time_steps = []
     if interval == 'monthly':
+        s_m = start_month if start_month is not None else 1
+        e_m = end_month if end_month is not None else 12
         for y in range(start_year, end_year + 1):
-            for m in range(1, 13):
+            for m in range(s_m, e_m + 1):
                 m_str = f"{m:02d}"
                 end_day = 31 if m in [1, 3, 5, 7, 8, 10, 12] else (30 if m in [4, 6, 9, 11] else (29 if y % 4 == 0 else 28))
                 time_steps.append({
@@ -209,29 +211,28 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, i
                     "year": y
                 })
     elif interval == 'seasonal':
-            seasons = [
-                ("Summer", "-03-01", "-06-30"), 
-                ("Monsoon", "-07-01", "-10-31"), 
-                ("Winter", "-11-01", "-02-28")
-            ]
-            for y in range(start_year, end_year + 1):
-                for s_name, s_start, s_end in seasons:
-                    # Handle winter spilling into the next calendar year safely
-                    if s_name == "Winter":
-                        curr_start_date = f"{y}{s_start}"
-                        curr_end_date = f"{y + 1}{s_end}"
-                        label_year_str = f"{y}-{y + 1}"
-                    else:
-                        curr_start_date = f"{y}{s_start}"
-                        curr_end_date = f"{y}{s_end}"
-                        label_year_str = str(y)
+        seasons = [
+            ("Summer", "-03-01", "-06-30"), 
+            ("Monsoon", "-07-01", "-10-31"), 
+            ("Winter", "-11-01", "-02-28")
+        ]
+        for y in range(start_year, end_year + 1):
+            for s_name, s_start, s_end in seasons:
+                if s_name == "Winter":
+                    curr_start_date = f"{y}{s_start}"
+                    curr_end_date = f"{y + 1}{s_end}"
+                    label_year_str = f"{y}-{y + 1}"
+                else:
+                    curr_start_date = f"{y}{s_start}"
+                    curr_end_date = f"{y}{s_end}"
+                    label_year_str = str(y)
 
-                    time_steps.append({
-                        "label": f"{s_name} {label_year_str}",
-                        "start_date": curr_start_date,
-                        "end_date": curr_end_date,
-                        "year": y
-                    })  
+                time_steps.append({
+                    "label": f"{s_name} {label_year_str}",
+                    "start_date": curr_start_date,
+                    "end_date": curr_end_date,
+                    "year": y
+                })  
     elif interval == '5-yearly':
         for y in range(start_year, end_year + 1, 5):
             time_steps.append({
@@ -256,7 +257,6 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, i
         print(f"[LULC STATUS] 🛰️ Evaluating step {step['label']} ({idx + 1}/{len(time_steps)})...")
         time.sleep(0.3)
 
-        # Pass custom date range to your composite function if updated, or use step['year']
         comp = get_clean_composite(step['year'], analysis_region)
         comp_roi = comp.clip(roi)
 
@@ -282,7 +282,6 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, i
             "area_km2": round(area_km2, 2),
         }
 
-    # Safe extraction of start and end data keys regardless of interval type
     keys_list = list(epoch_results.keys())
     start_data = epoch_results[keys_list[0]]
     end_data = epoch_results[keys_list[-1]]
@@ -318,7 +317,16 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, i
     tile_lulc_end = end_data["lulc"].clip(roi).visualize(**lulc_vis).getMapId()["tile_fetcher"].url_format
 
     print("[LULC PIPELINE] 🔄 Triggering nested process_lst_suhi_analysis...")
-    lst_results = process_lst_suhi_analysis(start_year=start_year, end_year=end_year, polygon_coords=polygon_coords, interval=interval, **kwargs)
+    # PASS start_month and end_month here so LST uses the exact same timeframe!
+    lst_results = process_lst_suhi_analysis(
+        start_year=start_year, 
+        end_year=end_year, 
+        polygon_coords=polygon_coords, 
+        interval=interval, 
+        start_month=start_month, 
+        end_month=end_month, 
+        **kwargs
+    )
     lst_tiles = lst_results.get("tile_urls", {})
     lst_stats = lst_results.get("statistics", {})
     lst_trends = lst_results.get("trends", {})
@@ -326,6 +334,12 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, i
     x_arr = np.array(built_series_km2, dtype=float)
     y_arr = np.array(lst_trends.get("suhi_series", built_series_km2), dtype=float)
     
+    # Safe check if lengths mismatch as a safeguard fallback
+    if len(x_arr) != len(y_arr):
+        min_len = min(len(x_arr), len(y_arr))
+        x_arr = x_arr[:min_len]
+        y_arr = y_arr[:min_len]
+
     if len(x_arr) > 1 and np.std(x_arr) > 0 and np.std(y_arr) > 0:
         slp, inter = np.polyfit(x_arr, y_arr, 1)
         corr_mat = np.corrcoef(x_arr, y_arr)
@@ -367,5 +381,4 @@ def process_lulc_analysis(start_year=2000, end_year=2025, polygon_coords=None, i
             "regression_line": regression_fit_line
         }
     }
-
 process_suhi_analysis = process_lulc_analysis

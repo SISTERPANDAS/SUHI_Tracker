@@ -292,3 +292,7 @@
     height: calc(100vh - 50px) !important;
     width: 100% !important;
 }
+
+#frames-popup-modal.hidden {
+    display: none;
+}
