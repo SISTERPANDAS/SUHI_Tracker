@@ -2223,6 +2223,82 @@ function handleIntervalChange() {
     }
 }
 
+/**
+ * Universal function to download the active Region of Interest (ROI) polygon 
+ * in GeoJSON, KML, or CSV format across all ROI selection methods.
+ */
+function downloadSelectedRoi() {
+    if (!currentRoiPolygon || !Array.isArray(currentRoiPolygon) || currentRoiPolygon.length === 0) {
+        alert("Please define, select, or generate a Region of Interest (ROI) first.");
+        return;
+    }
+
+    const format = document.getElementById('roi-export-format')?.value || 'geojson';
+    const cityName = document.getElementById('select-region')?.value || 'Custom_ROI';
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const sanitizedName = cityName.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    if (format === 'geojson') {
+        const geojson = {
+            type: "FeatureCollection",
+            features: [
+                {
+                    type: "Feature",
+                    properties: { name: cityName, export_date: timestamp },
+                    geometry: {
+                        type: "Polygon",
+                        coordinates: [currentRoiPolygon]
+                    }
+                }
+            ]
+        };
+        const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/json" });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `ROI_${sanitizedName}_${timestamp}.geojson`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+
+    } else if (format === 'kml') {
+        // Format coordinates as "lon,lat,alt ..." for KML LinearRing
+        const kmlCoords = currentRoiPolygon.map(pt => `${pt[0]},${pt[1]},0`).join(' ');
+        const kmlString = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>ROI Boundary - ${cityName}</name>
+    <Placemark>
+      <name>${cityName} Region of Interest</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>${kmlCoords}</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>`;
+        const blob = new Blob([kmlString], { type: "application/vnd.google-earth.kml+xml" });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `ROI_${sanitizedName}_${timestamp}.kml`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+
+    } else if (format === 'csv') {
+        let csvContent = "Longitude,Latitude\n";
+        currentRoiPolygon.forEach(pt => {
+            csvContent += `${pt[0]},${pt[1]}\n`;
+        });
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `ROI_${sanitizedName}_${timestamp}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
+}
+
 function logout() {
     localStorage.removeItem('active_session_user');
     fetch('/api/auth/logout', { method: 'POST' }).then(() => {

@@ -182,6 +182,25 @@
                         </div>
                     </div>
 
+                    <!-- UNIVERSAL ROI EXPORT & DOWNLOAD (Visible for all ROI methods) -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-semibold text-teal-400">Export Active ROI Boundary</span>
+                            <span class="text-[9px] text-slate-400">GeoJSON / KML / CSV</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <select id="roi-export-format" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg py-1.5 px-2 focus:outline-none focus:border-teal-500 cursor-pointer">
+                                <option value="geojson" selected>GeoJSON (.geojson)</option>
+                                <option value="kml">KML (.kml)</option>
+                                <option value="csv">CSV Coordinates (.csv)</option>
+                            </select>
+                            <button type="button" onclick="downloadSelectedRoi()" class="py-1.5 px-2.5 bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                <span>Download</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- ROI Options (Major Indian Cities Dropdown) -->
                     <div id="panel-region" class="roi-panel">
                         <label class="sidebar-sublabel">Select Major Indian City</label>
@@ -343,6 +362,7 @@
                                 </div>
                             </div>
                         </div>
+
 
                         <!-- Shapefile Analysis & Region Selector Subpanel -->
                         <div id="shapefile-analysis-subpanel" class="space-y-2.5 hidden pt-2 border-t border-slate-800">
@@ -807,7 +827,7 @@
 
                 <!-- Scrollable Content Section -->
                 <div class="space-y-4">
-<!-- SECTION 1: Core Thermal Indices & Urban Dynamics Guide (Expandable Accordion) -->
+                <!-- SECTION 1: Core Thermal Indices & Urban Dynamics Guide (Expandable Accordion) -->
                 <details class="bg-slate-900/90 border border-teal-500/30 rounded-2xl p-6 shadow-xl space-y-4 group">
                     <summary class="flex items-center justify-between border-b border-slate-800 pb-3 cursor-pointer list-none select-none">
                         <div class="flex items-center gap-2 text-teal-400 font-bold text-sm">
