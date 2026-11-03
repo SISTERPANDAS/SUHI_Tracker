@@ -113,6 +113,8 @@
                 <span class="text-lg font-bold text-teal-300">SUHI Tracker</span>
                 <span class="text-xs text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full ml-2">India National Platform</span>
             </div>
+
+
         </div>
 
         <!-- Global City Live Search Bar -->
@@ -175,7 +177,7 @@
                     <div>
                         <label class="sidebar-label">1. Select ROI Method</label>
                         <div class="grid grid-cols-4 gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs font-medium">
-                            <button onclick="setRoiMode('region')" id="btn-mode-region" class="roi-tab active-roi-tab">City</button>
+                            <button onclick="setRoiMode('region-drop-down')" id="btn-mode-region" class="roi-tab active-roi-tab">City</button>
                             <button onclick="setRoiMode('coordinates')" id="btn-mode-coordinates" class="roi-tab">Coords</button>
                             <button onclick="setRoiMode('draw')" id="btn-mode-draw" class="roi-tab">Draw</button>
                             <button onclick="setRoiMode('shapefile')" id="btn-mode-shapefile" class="roi-tab">Shapefile</button>
@@ -592,6 +594,13 @@
                     </button>
                 </div>
 
+                
+            <div class="hidden lg:flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-xl text-xs text-slate-300 ml-4">
+                <i data-lucide="maximize" class="w-3.5 h-3.5 text-teal-400"></i>
+                <span>ROI Area:</span>
+                <strong id="header-roi-area" class="text-teal-300 font-bold">-- km²</strong>
+            </div>
+
                 <!-- ROW 1: LULC CLASSIFICATION (Wrapped in #section-lulc-wrapper) -->
                 <div id="section-lulc-wrapper">
                     <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5">
@@ -727,11 +736,11 @@
                         </h3>
                         <div class="space-y-2 text-xs">
                             <div class="flex justify-between border-b border-slate-800 pb-1">
-                                <span class="text-slate-400">Baseline Built Area:</span>
+                                <span class="text-slate-400">Strat Year Built Area:</span>
                                 <span class="font-bold" id="stat-area-start">-- km²</span>
                             </div>
                             <div class="flex justify-between border-b border-slate-800 pb-1">
-                                <span class="text-slate-400">Target Built Area:</span>
+                                <span class="text-slate-400">End Year Built Area:</span>
                                 <span class="font-bold text-teal-300" id="stat-area-end">-- km²</span>
                             </div>
                             <div class="flex justify-between border-b border-slate-800 pb-1">
@@ -1132,6 +1141,7 @@
 
             <!-- Scroll Observer Script to Trigger Ladder Animation -->
             <script>
+                window.dbUserName = "{{ user.name if user else 'Analyst' }}";
                 document.addEventListener("DOMContentLoaded", () => {
                     const observerOptions = {
                         root: null,
@@ -1158,6 +1168,180 @@
                 document.getElementById('coord-north')?.addEventListener('input', updateRoiFromCoordinates);
             </script>
             </div>
+
+            <!-- Hidden Printable PDF Report Template Container (Stacked 1-Column Layout, Large Maps) -->
+            <div id="pdf-report-container" class="hidden text-slate-900 bg-white p-6 max-w-4xl mx-auto space-y-6 font-sans text-xs">
+                <style>
+                    .report-card {
+                        background-color: #f8fafc;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 8px;
+                        padding: 12px;
+                        page-break-inside: avoid;
+                        break-inside: avoid;
+                    }
+                    .map-stack-card {
+                        background-color: #f8fafc;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 8px;
+                        padding: 16px;
+                        text-align: center;
+                        page-break-inside: avoid;
+                        break-inside: avoid;
+                    }
+                </style>
+
+                <!-- Header / Metadata Section -->
+                <div class="border-b-2 border-teal-600 pb-3 flex items-center justify-between report-card">
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-900 leading-tight">SUHI & Urban Dynamics Assessment Report</h1>
+                        <p class="text-[10px] text-slate-500">SUHI Tracker — National Satellite Analytics Platform</p>
+                    </div>
+                    <div class="text-right text-[10px] text-slate-600 space-y-0.5">
+                        <div><strong class="text-slate-800">Date:</strong> <span id="rpt-date">--</span></div>
+                        <div><strong class="text-slate-800">Analyst:</strong> <span id="rpt-analyst">--</span></div>
+                    </div>
+                </div>
+
+                <!-- Section 1: Study Region & Parameters -->
+                <div class="report-card space-y-2">
+                    <h3 class="font-bold text-teal-800 text-[11px] uppercase tracking-wide">1. Study Region & Parameter Inputs</h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-6 gap-2 text-slate-700 text-[10px]">
+                        <div><span class="block text-slate-400 font-semibold">Selected City/ROI:</span> <strong id="rpt-roi-name" class="text-slate-900">--</strong></div>
+                        <div><span class="block text-slate-400 font-semibold">ROI Method:</span> <strong id="rpt-roi-mode" class="text-slate-900">--</strong></div>
+                        <div><span class="block text-slate-400 font-semibold">Temporal Interval:</span> <strong id="rpt-interval" class="text-slate-900">--</strong></div>
+                        <div><span class="block text-slate-400 font-semibold">Analysis Period:</span> <strong id="rpt-time-window" class="text-slate-900">--</strong></div>
+                        <div><span class="block text-slate-400 font-semibold">Total Study Area:</span> <strong id="rpt-total-area" class="text-slate-900">--</strong></div>
+                    </div>
+                    <div class="pt-1.5 border-t border-slate-200 text-slate-600 text-[10px]">
+                        <span class="font-semibold text-slate-700">Active Components:</span> <span id="rpt-components" class="text-slate-900 font-medium">--</span>
+                    </div>
+                </div>
+
+                <!-- Section 2: Metrics & Statistics -->
+                <div class="report-card space-y-2">
+                    <h3 class="font-bold text-teal-800 text-[11px] uppercase tracking-wide">2. Spatio-Temporal Metrics & Statistics</h3>
+                    <table class="w-full text-[10px] text-left border-collapse border border-slate-200">
+                        <thead>
+                            <tr class="bg-teal-900 text-white font-semibold">
+                                <th class="p-1.5 border border-slate-300">Metric Description</th>
+                                <th class="p-1.5 border border-slate-300" id="rpt-th-start">Start Analysis Value</th>
+                                <th class="p-1.5 border border-slate-300" id="rpt-th-end">End Analysis Value</th>
+                                <th class="p-1.5 border border-slate-300">Net Shift / Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-slate-800">
+                            <tr>
+                                <td class="p-1.5 border font-medium">Built-up Surface Area (km²)</td>
+                                <td class="p-1.5 border" id="rpt-stat-area-start">--</td>
+                                <td class="p-1.5 border" id="rpt-stat-area-end">--</td>
+                                <td class="p-1.5 border font-bold text-teal-700" id="rpt-stat-agr">-- % / yr</td>
+                            </tr>
+                            <tr class="bg-slate-50">
+                                <td class="p-1.5 border font-medium">Vegetation Surface Area (km²)</td>
+                                <td class="p-1.5 border" id="rpt-stat-veg-start">--</td>
+                                <td class="p-1.5 border" id="rpt-stat-veg-end">--</td>
+                                <td class="p-1.5 border font-bold text-emerald-700" id="rpt-stat-veg-rate">-- % / yr</td>
+                            </tr>
+                            <tr>
+                                <td class="p-1.5 border font-medium">Barren Land Surface Area (km²)</td>
+                                <td class="p-1.5 border" id="rpt-stat-barren-start">--</td>
+                                <td class="p-1.5 border" id="rpt-stat-barren-end">--</td>
+                                <td class="p-1.5 border font-bold text-amber-700" id="rpt-stat-barren-rate">-- % / yr</td>
+                            </tr>
+                            <tr class="bg-slate-50">
+                                <td class="p-1.5 border font-medium">Water Surface Area (km²)</td>
+                                <td class="p-1.5 border" id="rpt-stat-water-start">--</td>
+                                <td class="p-1.5 border" id="rpt-stat-water-end">--</td>
+                                <td class="p-1.5 border font-bold text-blue-700" id="rpt-stat-water-rate">-- % / yr</td>
+                            </tr>
+                            <tr class="bg-slate-50">
+                                <td class="p-1.5 border font-medium">Surface Urban Heat Island (SUHI)</td>
+                                <td class="p-1.5 border">--</td>
+                                <td class="p-1.5 border font-bold text-amber-600" id="rpt-stat-suhi">-- °C</td>
+                                <td class="p-1.5 border" id="rpt-stat-shift">--</td>
+                            </tr>
+                            <tr>
+                                <td class="p-1.5 border font-medium">Statistical Model Quality</td>
+                                <td class="p-1.5 border">Regression R²: <strong id="rpt-stat-r2">--</strong></td>
+                                <td class="p-1.5 border">Pixel Correlation (r): <strong id="rpt-stat-corr">--</strong></td>
+                                <td class="p-1.5 border text-slate-500">Landsat 30m Grid</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+
+
+                <!-- Section 4: High-Resolution Spatial Map Imagery (Stacked 1-Column, Extra Large Maps) -->
+                <div class="space-y-4">
+                    <h3 class="font-bold text-teal-800 text-[11px] uppercase tracking-wide">3. High-Resolution Spatial Map Imagery & Thermal Heatmaps</h3>
+                    
+                    <div class="space-y-6">
+                        <!-- LULC Start Map -->
+                        <div class="map-stack-card">
+                            <div class="text-xs font-bold text-slate-700 mb-2" id="rpt-map-lbl-1">LULC Start Map</div>
+                            <img id="rpt-img-lulc-start" class="w-full h-96 object-cover rounded border border-slate-300" alt="LULC Start">
+                            <div class="flex justify-center items-center gap-6 mt-2.5 text-[10px] font-semibold text-slate-700">
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#1f78b4]"></span> Water</span>
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#33a02c]"></span> Vegetation</span>
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#e31a1c]"></span> Built-up</span>
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#d9a441]"></span> Barren</span>
+                            </div>
+                        </div>
+
+                        <!-- LULC End Map -->
+                        <div class="map-stack-card">
+                            <div class="text-xs font-bold text-slate-700 mb-2" id="rpt-map-lbl-2">LULC End Map</div>
+                            <img id="rpt-img-lulc-end" class="w-full h-96 object-cover rounded border border-slate-300" alt="LULC End">
+                            <div class="flex justify-center items-center gap-6 mt-2.5 text-[10px] font-semibold text-slate-700">
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#1f78b4]"></span> Water</span>
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#33a02c]"></span> Vegetation</span>
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#e31a1c]"></span> Built-up</span>
+                                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-[#d9a441]"></span> Barren</span>
+                            </div>
+                        </div>
+
+                        <!-- LST Start Heatmap -->
+                        <div class="map-stack-card">
+                            <div class="text-xs font-bold text-slate-700 mb-2" id="rpt-map-lbl-3">LST Start Heatmap</div>
+                            <img id="rpt-img-lst-start" class="w-full h-96 object-cover rounded border border-slate-300" alt="LST Start">
+                            <div class="flex items-center justify-between mt-2.5 px-8 text-[10px] text-slate-600 font-semibold">
+                                <span>18°C</span>
+                                <div class="flex-1 mx-6 h-3.5 rounded-full bg-gradient-to-r from-[#1f78b4] via-[#33a02c] via-[#ffff99] via-[#e31a1c] to-[#8b0000]"></div>
+                                <span>34°C</span>
+                            </div>
+                        </div>
+
+                        <!-- LST End Heatmap -->
+                        <div class="map-stack-card">
+                            <div class="text-xs font-bold text-slate-700 mb-2" id="rpt-map-lbl-4">LST End Heatmap</div>
+                            <img id="rpt-img-lst-end" class="w-full h-96 object-cover rounded border border-slate-300" alt="LST End">
+                            <div class="flex items-center justify-between mt-2.5 px-8 text-[10px] text-slate-600 font-semibold">
+                                <span>18°C</span>
+                                <div class="flex-1 mx-6 h-3.5 rounded-full bg-gradient-to-r from-[#1f78b4] via-[#33a02c] via-[#ffff99] via-[#e31a1c] to-[#8b0000]"></div>
+                                <span>34°C</span>
+                            </div>
+                        </div>
+
+                                        <!-- Section 3: Time-Series Trends & Regression Chart -->
+                        <div class="report-card space-y-2">
+                            <h3 class="font-bold text-teal-800 text-[11px] uppercase tracking-wide">4. Time-Series Trends & Regression Analysis</h3>
+                            <div class="flex justify-center py-1">
+                                <img id="rpt-img-chart" class="w-full max-h-56 object-contain rounded" alt="SUHI Trends Chart">
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Footer Disclaimer -->
+                <div class="pt-3 text-[9px] text-slate-400 flex justify-between border-t border-slate-200 report-card">
+                    <span>Confidential Report — SUHI Tracker Satellite Analytics Engine</span>
+                    <span>Generated via SUHI Analytics Platform</span>
+                </div>
+            </div>
+
         </main>
     </div>
 

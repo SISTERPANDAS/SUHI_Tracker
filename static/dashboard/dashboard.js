@@ -111,6 +111,8 @@ function centerRoiPickerOnSelectedRegion() {
     updateBufferedBoundsFromPolygon(currentRoiPolygon);
     checkAoiAreaWarning(currentRoiPolygon);
 
+    updateHeaderRoiAreaDisplay(currentRoiPolygon);
+
     if (drawnItems) {
         drawnItems.clearLayers();
         const delta = 0.06;
@@ -123,6 +125,7 @@ function centerRoiPickerOnSelectedRegion() {
         drawnItems.addLayer(rectLayer);
     }
 }
+
 
 function updateRoiFromCoordinates() {
     let polygonCoords = [];
@@ -237,6 +240,9 @@ function updateRoiFromCoordinates() {
     }
 
     currentRoiPolygon = polygonCoords;
+
+    updateHeaderRoiAreaDisplay(currentRoiPolygon);
+
     if (typeof checkAoiAreaWarning === 'function') {
         checkAoiAreaWarning(currentRoiPolygon);
     }
@@ -468,6 +474,8 @@ function initRoiPickerMap() {
                 currentRoiPolygon.push([...currentRoiPolygon[0]]);
             }
             updateBufferedBoundsFromPolygon(currentRoiPolygon);
+
+            updateHeaderRoiAreaDisplay(currentRoiPolygon);
 
             if (typeof checkAoiAreaWarning === 'function') {
                 checkAoiAreaWarning(currentRoiPolygon);
@@ -938,6 +946,18 @@ async function executeFullAnalysis() {
         }).then(res => res.json());
 
         window._cachedAnalysisResult = await fetchPromise;
+
+        // Print satellite imagery sources used for each step to the browser console
+        if (window._cachedAnalysisResult && window._cachedAnalysisResult.trends && window._cachedAnalysisResult.trends.satellite_sources) {
+            console.group("🛰️ SUHI Tracker — Satellite Imagery Audit Trail");
+            const labels = window._cachedAnalysisResult.trends.labels;
+            const sources = window._cachedAnalysisResult.trends.satellite_sources;
+            
+            labels.forEach((label, index) => {
+                console.log(`Step [${label}] ➔ Dataset: ${sources[index] || "Landsat Multi-Spectral Composite"}`);
+            });
+            console.groupEnd();
+        }
     }});
 
     if (wantGraphs) {
@@ -1374,23 +1394,189 @@ function initAnalyticsCharts() {
         });
     }
 }
+/**
+ * Captures live map cards and analysis statistics to generate and download a clean, structured PDF report.
+ */
+async function downloadPDFReport() {
+    const reportContainer = document.getElementById('pdf-report-container');
+    if (!reportContainer) {
+        alert("Report container template not found in DOM.");
+        return;
+    }
 
-function downloadPDFReport() {
-    const element = document.getElementById('printable-report');
-    if (!element) return;
-
-    const cityName = document.getElementById('select-region')?.value || 'Custom_ROI';
+    // 1. Gather User Inputs & Keywords
+    const cityName = document.getElementById('select-region')?.value || document.getElementById('city-search-input')?.value || 'Custom_ROI';
+    const roiMode = currentMode ? currentMode.toUpperCase() : 'REGION';
+    const startYear = document.getElementById('start-year')?.value || '2000';
+    const endYear = document.getElementById('end-year')?.value || '2025';
     const interval = document.getElementById('analysis-interval')?.value || 'yearly';
+    
+    let intervalText = interval.charAt(0).toUpperCase() + interval.slice(1);
+    let timeWindowText = `${startYear} to ${endYear}`;
+    let startHeaderLabel = `Year ${startYear}`;
+    let endHeaderLabel = `Year ${endYear}`;
+
+    if (interval === 'monthly') {
+        const smSelect = document.getElementById('start-month');
+        const emSelect = document.getElementById('end-month');
+        const smName = smSelect?.selectedOptions[0]?.text || 'January';
+        const emName = emSelect?.selectedOptions[0]?.text || 'July';
+        intervalText = 'Monthly';
+        timeWindowText = `${smName} ${startYear} – ${emName} ${endYear}`;
+        startHeaderLabel = `${smName} ${startYear}`;
+        endHeaderLabel = `${emName} ${endYear}`;
+    } else if (interval === 'seasonal') {
+        intervalText = 'Seasonal';
+        timeWindowText = `Summer ${startYear} – Monsoon ${endYear}`;
+        startHeaderLabel = `Summer ${startYear}`;
+        endHeaderLabel = `Monsoon ${endYear}`;
+    } else if (interval === '5-yearly') {
+        intervalText = '5-Year Interval';
+        timeWindowText = `${startYear} – ${endYear} (5-Yr Step)`;
+        startHeaderLabel = `Start (${startYear})`;
+        endHeaderLabel = `End (${endYear})`;
+    }
+
+    const wantLulc = document.getElementById('chk-lulc')?.checked ?? true;
+    const wantLst = document.getElementById('chk-lst')?.checked ?? true;
+    const wantSuhi = document.getElementById('chk-suhi')?.checked ?? true;
+    const wantGraphs = document.getElementById('chk-graphs')?.checked ?? true;
+
+    const componentsList = [];
+    if (wantLulc) componentsList.push("LULC Transition Mapping");
+    if (wantLst) componentsList.push("Thermal LST Heatmaps");
+    if (wantSuhi) componentsList.push("SUHI Intensity Analysis");
+    if (wantGraphs) componentsList.push("Time-Series Trends & Regression");
+
+    // 2. Populate Metadata & Dynamic Analyst Name safely
+    // 2. Populate Metadata & Dynamic Analyst Name safely
+    const profileNameEl = document.getElementById('profile-name');
+    const loggedInUser = window.dbUserName || 
+                         (profileNameEl ? profileNameEl.textContent.trim() : null) || 
+                         localStorage.getItem('userName') || 
+                         localStorage.getItem('currentUser') || 
+                         'Analyst';
+    const polygonArea = calculatePolygonAreaKm2(currentRoiPolygon);
+    const formattedArea = polygonArea > 0 ? `${polygonArea.toFixed(2)} km²` : 'N/A';
+
+    const safeSetText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    safeSetText('rpt-date', new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }));
+    safeSetText('rpt-analyst', loggedInUser);
+    safeSetText('rpt-roi-name', cityName);
+    safeSetText('rpt-roi-mode', roiMode);
+    safeSetText('rpt-period', `${startYear} – ${endYear}`);
+    safeSetText('rpt-interval', intervalText);
+    safeSetText('rpt-total-area', formattedArea);
+    safeSetText('rpt-time-window', timeWindowText);
+    safeSetText('rpt-components', componentsList.join(" | "));
+
+    safeSetText('rpt-th-start', startHeaderLabel);
+    safeSetText('rpt-th-end', endHeaderLabel);
+
+    // 3. Populate Quantitative Statistics safely
+// 3. Populate Quantitative Statistics safely
+    safeSetText('rpt-stat-area-start', document.getElementById('stat-area-start')?.innerText || '--');
+    safeSetText('rpt-stat-area-end', document.getElementById('stat-area-end')?.innerText || '--');
+    safeSetText('rpt-stat-agr', document.getElementById('stat-agr')?.innerText || '--');
+
+    const statsCache = window._cachedAnalysisResult?.statistics || {};
+    
+    // Vegetation Cover
+    safeSetText('rpt-stat-veg-start', statsCache.start_vegetation_area !== undefined ? `${statsCache.start_vegetation_area} km²` : '--');
+    safeSetText('rpt-stat-veg-end', statsCache.end_vegetation_area !== undefined ? `${statsCache.end_vegetation_area} km²` : '--');
+    safeSetText('rpt-stat-veg-rate', statsCache.vegetation_annual_growth_rate !== undefined ? `${statsCache.vegetation_annual_growth_rate}% / yr` : '--');
+
+    // Barren Land Cover
+    safeSetText('rpt-stat-barren-start', statsCache.start_barren_area !== undefined ? `${statsCache.start_barren_area} km²` : '--');
+    safeSetText('rpt-stat-barren-end', statsCache.end_barren_area !== undefined ? `${statsCache.end_barren_area} km²` : '--');
+    safeSetText('rpt-stat-barren-rate', statsCache.barren_annual_growth_rate !== undefined ? `${statsCache.barren_annual_growth_rate}% / yr` : '--');
+
+    // Water Surface Cover
+    safeSetText('rpt-stat-water-start', statsCache.start_water_area !== undefined ? `${statsCache.start_water_area} km²` : '--');
+    safeSetText('rpt-stat-water-end', statsCache.end_water_area !== undefined ? `${statsCache.end_water_area} km²` : '--');
+    safeSetText('rpt-stat-water-rate', statsCache.water_annual_growth_rate !== undefined ? `${statsCache.water_annual_growth_rate}% / yr` : '--');
+
+    safeSetText('rpt-stat-suhi', document.getElementById('stat-suhi-intensity')?.innerText || '--');
+    safeSetText('rpt-stat-shift', document.getElementById('stat-shift')?.innerText || '--');
+    safeSetText('rpt-stat-r2', document.getElementById('stat-reg-r2')?.innerText || '--');
+    safeSetText('rpt-stat-corr', document.getElementById('stat-corr-r')?.innerText || '--');
+
+    safeSetText('rpt-stat-veg-start', statsCache.start_vegetation_area !== undefined ? `${statsCache.start_vegetation_area} km²` : (statsCache.veg_start !== undefined ? `${statsCache.veg_start} km²` : '--'));
+    safeSetText('rpt-stat-veg-end', statsCache.end_vegetation_area !== undefined ? `${statsCache.end_vegetation_area} km²` : (statsCache.veg_end !== undefined ? `${statsCache.veg_end} km²` : '--'));
+    safeSetText('rpt-stat-veg-rate', statsCache.vegetation_annual_growth_rate !== undefined ? `${statsCache.vegetation_annual_growth_rate}% / yr` : '--');
+
+    safeSetText('rpt-stat-barren-start', statsCache.start_barren_area !== undefined ? `${statsCache.start_barren_area} km²` : (statsCache.barren_start !== undefined ? `${statsCache.barren_start} km²` : '--'));
+    safeSetText('rpt-stat-barren-end', statsCache.end_barren_area !== undefined ? `${statsCache.end_barren_area} km²` : (statsCache.barren_end !== undefined ? `${statsCache.barren_end} km²` : '--'));
+    safeSetText('rpt-stat-barren-rate', statsCache.barren_annual_growth_rate !== undefined ? `${statsCache.barren_annual_growth_rate}% / yr` : '--');
+
+    safeSetText('rpt-stat-suhi', document.getElementById('stat-suhi-intensity')?.innerText || '--');
+    safeSetText('rpt-stat-shift', document.getElementById('stat-shift')?.innerText || '--');
+    safeSetText('rpt-stat-r2', document.getElementById('stat-reg-r2')?.innerText || '--');
+    safeSetText('rpt-stat-corr', document.getElementById('stat-corr-r')?.innerText || '--');
+
+    safeSetText('rpt-map-lbl-1', `LULC CLASSIFICATION – ${startHeaderLabel}`);
+    safeSetText('rpt-map-lbl-2', `LULC CLASSIFICATION – ${endHeaderLabel}`);
+    safeSetText('rpt-map-lbl-3', `LST HEATMAP – ${startHeaderLabel}`);
+    safeSetText('rpt-map-lbl-4', `LST HEATMAP – ${endHeaderLabel}`);
+
+    // 4. Capture Map Snapshots & Analytics Chart
+    try {
+        const renderOptions = { useCORS: true, allowTaint: true, scale: 2, backgroundColor: '#0f172a' };
+
+        const captureCanvas = async (elemId) => {
+            const el = document.getElementById(elemId);
+            if (!el) return '';
+            const canvas = await html2canvas(el, renderOptions);
+            return canvas.toDataURL('image/jpeg', 0.95);
+        };
+
+        const imgLulcStart = await captureCanvas('map-built-start');
+        const imgLulcEnd = await captureCanvas('map-built-end');
+        const imgLstStart = await captureCanvas('map-lst-start');
+        const imgLstEnd = await captureCanvas('map-lst-end');
+
+        if (imgLulcStart) document.getElementById('rpt-img-lulc-start').src = imgLulcStart;
+        if (imgLulcEnd) document.getElementById('rpt-img-lulc-end').src = imgLulcEnd;
+        if (imgLstStart) document.getElementById('rpt-img-lst-start').src = imgLstStart;
+        if (imgLstEnd) document.getElementById('rpt-img-lst-end').src = imgLstEnd;
+
+        const chartCanvas = document.getElementById('suhiTrendChart') || document.getElementById('suhiScatterChart');
+        if (chartCanvas) {
+            const rptImgChart = document.getElementById('rpt-img-chart');
+            if (rptImgChart) rptImgChart.src = chartCanvas.toDataURL('image/png');
+        }
+
+    } catch (err) {
+        console.error("Error capturing map images for PDF report:", err);
+    }
+
+    // 5. Unhide and Generate Document
+    reportContainer.classList.remove('hidden');
+
     const downloadDate = new Date().toISOString().slice(0, 10);
+    const sanitizedCity = cityName.replace(/[^a-zA-Z0-9_-]/g, '_');
 
     const opt = {
-        margin: 0.3,
-        filename: `SUHI_Report_${cityName}_${interval}_${downloadDate}.pdf`,
+        margin: [0.3, 0.3, 0.3, 0.3],
+        filename: `SUHI_Analysis_Report_${sanitizedCity}_${startYear}-${endYear}_${downloadDate}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#020617' },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' }
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] }
     };
-    html2pdf().set(opt).from(element).save();
+
+    try {
+        await html2pdf().set(opt).from(reportContainer).save();
+    } catch (err) {
+        console.error("PDF generation failed:", err);
+        alert("Failed to generate PDF report.");
+    } finally {
+        reportContainer.classList.add('hidden');
+    }
 }
 
 function calculatePolygonAreaKm2(coords) {
@@ -2204,6 +2390,9 @@ function confirmShapefileRoiSelection() {
     }
 
     currentRoiPolygon = coords;
+
+    updateHeaderRoiAreaDisplay(currentRoiPolygon);
+    
     if (typeof checkAoiAreaWarning === 'function') {
         checkAoiAreaWarning(currentRoiPolygon);
     }
@@ -2296,6 +2485,21 @@ function downloadSelectedRoi() {
         link.download = `ROI_${sanitizedName}_${timestamp}.csv`;
         link.click();
         URL.revokeObjectURL(link.href);
+    }
+}
+
+/**
+ * Updates the total ROI area display at the top of the dashboard.
+ */
+function updateHeaderRoiAreaDisplay(coords) {
+    const areaEl = document.getElementById('header-roi-area');
+    if (!areaEl) return;
+
+    const areaKm2 = calculatePolygonAreaKm2(coords);
+    if (areaKm2 > 0) {
+        areaEl.innerText = `${areaKm2.toFixed(2)} km²`;
+    } else {
+        areaEl.innerText = '-- km²';
     }
 }
 
